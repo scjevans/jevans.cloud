@@ -26,6 +26,7 @@
       { name: 'GITHUB',    handle: '@scjevans',             url: 'https://github.com/scjevans' },
       { name: 'INSTAGRAM', handle: '@jevans2206',           url: 'https://www.instagram.com/jevans2206/' },
       { name: 'YOUTUBE',   handle: '@realjevans',           url: 'https://www.youtube.com/@realjevans' },
+      { name: 'STEAM',     handle: 'scjevans',              url: 'https://steamcommunity.com/id/scjevans/' },
       { name: 'DISCORD',   handle: '.jevans',               copy: '.jevans' },
       { name: 'EMAIL',     handle: EMAIL,                   copy: EMAIL },
     ],
