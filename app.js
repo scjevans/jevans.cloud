@@ -666,12 +666,20 @@
 
   const fit = () => {
     const remote = document.querySelector('.remote');
+    // On big screens, stand the remote up beside the set whenever that leaves
+    // room for a bigger screen than stacking it underneath would.
+    const fitCw = (w, h) => Math.min(w / (COLS + 2), h / ((ROWS + 1) * ASPECT));
+    const wide = innerWidth >= 1000 &&
+      fitCw(innerWidth - 64 - 172 - 48, innerHeight - 48) > fitCw(innerWidth - 32, innerHeight - 64 - 72);
+    document.body.classList.toggle('wide', wide);
     // Phones get a thinner border and fractional columns: every pixel counts
     // at 40 characters across. Row heights stay whole so bands never seam.
     const narrow = innerWidth < 760;
     const padc = narrow ? 0.5 : 1;
-    const availW = Math.min(innerWidth - (narrow ? 24 : 32), 1240);
-    const availH = innerHeight - remote.offsetHeight - 90;
+    const availW = wide
+      ? innerWidth - 64 - remote.offsetWidth - 48
+      : innerWidth - (narrow ? 24 : 32);
+    const availH = wide ? innerHeight - 48 : innerHeight - remote.offsetHeight - 72;
     const byW = availW / (COLS + padc * 2);
     const byH = availH / ((ROWS + 1) * ASPECT);
     const cw = narrow ? Math.floor(byW * 100) / 100 : Math.max(6, Math.floor(Math.min(byW, byH)));

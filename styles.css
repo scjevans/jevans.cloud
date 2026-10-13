@@ -402,6 +402,41 @@ a.btn:hover > *, a.btn:focus-visible > * { filter: brightness(1.25) saturate(1.2
 }
 .nojs a { color: var(--c); text-decoration: underline; }
 
+/* ---------- widescreen: remote stands beside the set ---------- */
+
+body.wide { padding: 24px 32px; }
+body.wide .set {
+  width: auto;
+  max-width: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 48px;
+}
+body.wide .set::before { inset: 6% 22% 6% 4%; }
+
+body.wide .remote {
+  flex: none;
+  width: 172px;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 24px;
+  padding: 28px 20px 46px;
+  border-radius: 40px 40px 34px 34px;
+}
+body.wide .pad { grid-template-columns: repeat(3, 38px); gap: 10px; }
+body.wide .pad button { height: 34px; line-height: 34px; }
+body.wide .pad button[data-digit="0"] { grid-column: 2; }
+body.wide .keys {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 16px 18px;
+  align-items: start;
+}
+body.wide .ck i { width: 50px; height: 20px; border-radius: 10px; }
+body.wide .rv { grid-column: 1 / -1; justify-self: center; align-self: auto; }
+body.wide .model { top: auto; bottom: 18px; left: 0; right: 0; text-align: center; }
+
 /* ---------- smaller sets ---------- */
 
 @media (max-width: 760px) {
