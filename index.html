@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>JEVANS.CLOUD</title>
+  <meta name="description" content="Public access television for one: a home media server, links and socials.">
+  <meta name="theme-color" content="#0d0d0f">
+  <meta property="og:title" content="JEVANS.CLOUD">
+  <meta property="og:description" content="Mostly movies. Some links. Media on channel 3.">
+  <meta property="og:url" content="https://jevans.cloud/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=block">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-section="y">
+  <h1 class="sr">jevans.cloud</h1>
+
+  <main class="set">
+    <div class="screen" id="screen">
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <nav class="remote" aria-label="Remote control">
+      <div class="pad" role="group" aria-label="Enter a channel number">
+        <button type="button" data-digit="1">1</button>
+        <button type="button" data-digit="2">2</button>
+        <button type="button" data-digit="3">3</button>
+        <button type="button" data-digit="4">4</button>
+        <button type="button" data-digit="5">5</button>
+        <button type="button" data-digit="6">6</button>
+        <button type="button" data-digit="7">7</button>
+        <button type="button" data-digit="8">8</button>
+        <button type="button" data-digit="9">9</button>
+        <button type="button" data-digit="0">0</button>
+      </div>
+      <div class="rocker" role="group" aria-label="Channel up and down">
+        <button type="button" data-surf="1" aria-label="Channel up"><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 5 5 1l4 4"/></svg></button>
+        <span>CH</span>
+        <button type="button" data-surf="-1" aria-label="Channel down"><svg viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg></button>
+      </div>
+      <div class="keys" role="group" aria-label="Channels">
+        <button type="button" class="ck" data-c="r" data-ch="3" aria-label="Media server, channel 3"><i></i>Media</button>
+        <button type="button" class="ck" data-c="g" data-ch="4" aria-label="Links, channel 4"><i></i>Links</button>
+        <button type="button" class="ck" data-c="y" data-ch="2" aria-label="Guide, channel 2"><i></i>Guide</button>
+        <button type="button" class="ck" data-c="c" data-ch="5" aria-label="About, channel 5"><i></i>About</button>
+        <button type="button" class="rv" data-cc aria-pressed="false" aria-label="Closed captions"><b>CC</b></button>
+      </div>
+      <span class="model" aria-hidden="true">JV&#8209;100</span>
+    </nav>
+  </main>
+
+  <noscript>
+    <p class="nojs">This set needs JavaScript to tune in. The media server lives at
+      <a href="https://media.jevans.cloud">media.jevans.cloud</a>.</p>
+  </noscript>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
