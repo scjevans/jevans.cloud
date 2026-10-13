@@ -61,7 +61,7 @@ body {
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: calc(var(--row) * 1.1);
+  gap: 24px;
 }
 
 /* Light from the tube spilling into the room, tinted by the channel on screen. */
@@ -415,6 +415,7 @@ body.wide .set {
 body.wide .set::before { inset: 6% 22% 6% 4%; }
 
 body.wide .remote {
+  display: flex;
   flex: none;
   width: 172px;
   flex-direction: column;
@@ -437,10 +438,24 @@ body.wide .ck i { width: 50px; height: 20px; border-radius: 10px; }
 body.wide .rv { grid-column: 1 / -1; justify-self: center; align-self: auto; }
 body.wide .model { top: auto; bottom: 18px; left: 0; right: 0; text-align: center; }
 
+/* sideways phones: same layout, compact remote */
+@media (max-height: 560px) {
+  body.wide { padding: 12px 24px; }
+  body.wide .set { gap: 24px; }
+  body.wide .remote { width: 150px; gap: 10px; padding: 14px 14px 16px; border-radius: 28px; }
+  body.wide .pad { grid-template-columns: repeat(3, 34px); gap: 6px; }
+  body.wide .pad button { height: 28px; line-height: 28px; font-size: 18px; }
+  body.wide .rocker { flex-direction: row; gap: 8px; }
+  body.wide .rocker button { height: 26px; width: 34px; }
+  body.wide .keys { gap: 8px 12px; }
+  body.wide .ck i { width: 44px; height: 16px; }
+  body.wide .model { display: none; }
+}
+
 /* ---------- smaller sets ---------- */
 
 @media (max-width: 760px) {
-  body { place-items: start center; padding: 16px 12px 24px; }
+  body { padding: 16px 12px 24px; }
   .model { display: none; }
   .remote {
     display: grid;
@@ -451,7 +466,7 @@ body.wide .model { top: auto; bottom: 18px; left: 0; right: 0; text-align: cente
   }
   .pad { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
   .keys { grid-column: 1 / -1; }
-  .pad button { height: 40px; line-height: 40px; }
+  .pad button { height: 44px; line-height: 44px; font-size: 24px; }
   .keys { width: 100%; justify-content: space-between; }
   .ck i { width: 52px; height: 22px; border-radius: 11px; }
   .rv b { height: 22px; line-height: 22px; }

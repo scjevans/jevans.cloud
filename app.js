@@ -42,6 +42,7 @@
   const COLS = 40;
   const ROWS = 24;
   const ASPECT = 1.22; // cell height / cell width
+  const MAX_ASPECT = 2.4; // rows may stretch this far; past it VT323 starts to squash
   const GLYPH = 1.02;  // font-size / row height
 
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -666,24 +667,38 @@
 
   const fit = () => {
     const remote = document.querySelector('.remote');
-    // On big screens, stand the remote up beside the set whenever that leaves
-    // room for a bigger screen than stacking it underneath would.
+    const short = innerHeight < 560; // e.g. a phone held sideways
+    const padX = short ? 24 : 32;
+    const padY = short ? 24 : 48;    // body padding, top + bottom
+    const gap = short ? 24 : 48;     // between set and remote when side by side
+
+    // Stand the remote up beside the set whenever that leaves room for a
+    // bigger screen than stacking it underneath would.
     const fitCw = (w, h) => Math.min(w / (COLS + 2), h / ((ROWS + 1) * ASPECT));
-    const wide = innerWidth >= 1000 &&
-      fitCw(innerWidth - 64 - 172 - 48, innerHeight - 48) > fitCw(innerWidth - 32, innerHeight - 64 - 72);
+    const wide = innerWidth >= 640 &&
+      fitCw(innerWidth - padX * 2 - 172 - gap, innerHeight - padY) >
+      fitCw(innerWidth - 32, innerHeight - 64 - 80);
     document.body.classList.toggle('wide', wide);
+
     // Phones get a thinner border and fractional columns: every pixel counts
     // at 40 characters across. Row heights stay whole so bands never seam.
-    const narrow = innerWidth < 760;
+    const narrow = innerWidth < 760 && !wide;
     const padc = narrow ? 0.5 : 1;
     const availW = wide
-      ? innerWidth - 64 - remote.offsetWidth - 48
+      ? innerWidth - padX * 2 - remote.offsetWidth - gap
       : innerWidth - (narrow ? 24 : 32);
-    const availH = wide ? innerHeight - 48 : innerHeight - remote.offsetHeight - 72;
+    const availH = wide
+      ? innerHeight - padY
+      : innerHeight - remote.offsetHeight - (narrow ? 40 : 56) - 24;
     const byW = availW / (COLS + padc * 2);
     const byH = availH / ((ROWS + 1) * ASPECT);
     const cw = narrow ? Math.floor(byW * 100) / 100 : Math.max(6, Math.floor(Math.min(byW, byH)));
-    const rh = Math.round(cw * ASPECT);
+
+    // Tall screens (phones, portrait tablets) have height to spare once the
+    // width is used up. Spend it on taller rows instead of empty space; VT323
+    // is a tall font anyway, so text gets bigger and less stretched.
+    const aspect = wide ? ASPECT : Math.min(MAX_ASPECT, Math.max(ASPECT, availH / ((ROWS + 1) * cw)));
+    const rh = Math.floor(cw * aspect);
     const fs = rh * GLYPH;
     rootStyle.setProperty('--cw', cw + 'px');
     rootStyle.setProperty('--padc', padc);
