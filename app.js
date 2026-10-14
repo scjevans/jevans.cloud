@@ -717,8 +717,19 @@
   };
 
   addEventListener('resize', fit);
-  // If the font arrives late, or swaps in after a fallback, measure again.
-  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { measure(); fit(); });
+  // If the font arrives late or swaps in after a fallback (in-app browsers
+  // like Discord's do this), the ruler changes width: measure again.
+  const remeasure = () => {
+    const before = advance;
+    measure();
+    if (Math.abs(advance - before) > 1e-4) fit();
+  };
+  if (window.ResizeObserver) new ResizeObserver(remeasure).observe(ruler);
+  if (document.fonts) {
+    document.fonts.addEventListener('loadingdone', remeasure);
+    document.fonts.ready.then(remeasure);
+  }
+  addEventListener('load', remeasure);
 
   /* ------------------------------------------------------------------ */
   /* Media server status                                                 */
