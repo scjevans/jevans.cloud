@@ -31,7 +31,12 @@ body[data-section="w"] { --tint: var(--w); }
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { background: var(--room); }
+html {
+  background: var(--room);
+  /* stop iOS enlarging text when the phone turns sideways */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
 body {
   margin: 0;
@@ -126,6 +131,9 @@ body {
   font-family: "VT323", ui-monospace, monospace;
   font-size: var(--fs);
   line-height: var(--row);
+  /* every character must take exactly one cell, so no "fi"-style ligatures */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0;
   color: var(--w);
   text-shadow: 0 0 calc(var(--row) * .35) color-mix(in srgb, currentColor 40%, transparent);
   animation: flicker 9s infinite;

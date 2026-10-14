@@ -659,10 +659,18 @@
   const rootStyle = document.documentElement.style;
   let advance = 0.5; // glyph advance / font-size, measured once the font loads
 
+  // Measure real laid-out text with the screen's own font stack rather than a
+  // canvas: iOS Safari measures canvas text with a fallback font, which made
+  // every row render ~20% too narrow there.
+  const ruler = document.createElement('span');
+  ruler.setAttribute('aria-hidden', 'true');
+  ruler.textContent = '0'.repeat(40);
+  ruler.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;' +
+    'font-family:"VT323",ui-monospace,monospace;font-size:100px;letter-spacing:0';
+  document.body.append(ruler);
+
   const measure = () => {
-    const ctx = document.createElement('canvas').getContext('2d');
-    ctx.font = '100px VT323';
-    advance = ctx.measureText('0000000000').width / 1000 || 0.5;
+    advance = ruler.getBoundingClientRect().width / 4000 || 0.5;
   };
 
   const fit = () => {
@@ -709,6 +717,8 @@
   };
 
   addEventListener('resize', fit);
+  // If the font arrives late, or swaps in after a fallback, measure again.
+  if (document.fonts) document.fonts.addEventListener('loadingdone', () => { measure(); fit(); });
 
   /* ------------------------------------------------------------------ */
   /* Media server status                                                 */
