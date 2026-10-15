@@ -628,6 +628,13 @@ master password); they just can't save new ones or sync until you're home again.
 full syncing away from home, ask: Tailscale (a private tunnel only your own devices can use) is the
 safe way to do that. Opening a password safe to the whole internet isn't.
 
+**How it's locked down.** Layers, like a bank: the vault is home-only, the box it runs in is locked
+(it runs as you rather than as the all-powerful `root` user, can't change its own files, and can only
+write to its vault folder), sign-ups are closed, the admin page is switched off when you're not using
+it, password hints are hidden, and it doesn't fetch website logos (which would tell your ISP which
+sites you have accounts with). On your account you add two-step login and the stronger Argon2id
+password scrambling. Your master password is the last and most important layer.
+
 **a. DNS.** One more record next to `home`, same value, for the same reason (so Caddy can get the
 HTTPS padlock; the Bitwarden apps refuse to connect without it):
 
@@ -660,9 +667,11 @@ VAULTWARDEN_ADMIN_TOKEN='$argon2id$v=19$m=65540,t=3,p=4$...the rest of the line.
 
 Keep the single quotes: without them Docker reads every `$` as the start of a setting name and mangles it.
 
-**c. Start it and make your account.**
+**c. Start it and make your account.** First give it a folder you own (it runs as you, not root; the
+`chown` also fixes the folder if Docker already made it as root):
 
 ```sh
+mkdir -p /opt/media/config/vaultwarden && sudo chown -R $USER:$USER /opt/media/config/vaultwarden
 cd ~/jevans.cloud/server && docker compose up -d && docker restart caddy
 docker logs vaultwarden 2>&1 | tail -5
 ```
@@ -679,15 +688,25 @@ change `VAULTWARDEN_SIGNUPS_ALLOWED=true` to `false`, then:
 docker compose up -d vaultwarden
 ```
 
-Want to give someone in the house their own vault later? Use the admin page (`/admin` → Users →
-Invite User); you don't need to open sign-ups again.
+**e. Switch the admin page off.** You don't need it day to day, and a page that doesn't exist can't
+be broken into. In `.env`, empty the token line so it reads just `VAULTWARDEN_ADMIN_TOKEN=`, then
+`docker compose up -d vaultwarden`. `https://vault.jevans.cloud/admin` now says the page is disabled.
+Want to give someone in the house their own vault later? Run step b again to put a token back, use
+`/admin` → Users → **Invite User**, then empty the line again. You never need to reopen sign-ups.
 
-**e. Turn on two-step login.** In the web vault: your avatar (top right) → **Account settings** →
-**Security** → **Two-step login** → **Authenticator app**. Scan the code with an authenticator app
-(Google Authenticator, Microsoft Authenticator, Aegis...). Save the **recovery code** it shows on the
-same paper as your master password.
+**f. Lock your account down.** In the web vault, click your avatar (top right) → **Account settings**
+→ **Security**:
 
-**f. Bring your passwords over from LastPass.**
+- **Two-step login** → **Authenticator app**. Scan the code with an authenticator app on your phone
+  (Aegis, 2FAS, Google or Microsoft Authenticator). Now a stolen master password alone isn't enough.
+  Save the **recovery code** it shows on the same paper as your master password. If you own a hardware
+  key like a YubiKey, add it here too under **Passkey / FIDO2 WebAuthn**: it's the strongest option.
+- **Keys** → **KDF algorithm**: change it to **Argon2id** (keep the suggested numbers) and save. This
+  is how hard your master password is to guess-and-check if someone ever got a copy of the vault:
+  Argon2id makes every guess cost a lot of memory as well as time, which cripples password-cracking
+  hardware. It signs you out; sign back in.
+
+**g. Bring your passwords over from LastPass.**
 
 > ⚠️ The file LastPass gives you is every password you own **in plain, readable text**. Treat it
 > like cash left on the table. Never email it, never upload it, never paste it into a chat (including
@@ -707,7 +726,7 @@ What doesn't come across: file attachments (download any from LastPass by hand a
 items) and sharing with other people. Keep your LastPass account for a few weeks until you're sure
 nothing is missing, then close it.
 
-**g. Connect the Bitwarden apps.** Install the official Bitwarden extension in your browser and the
+**h. Connect the Bitwarden apps.** Install the official Bitwarden extension in your browser and the
 Bitwarden app on your phone. On the sign-in screen, before typing anything:
 
 - Find **Logging in on: bitwarden.com** (or **Accessing**) and change it to **self-hosted**.
@@ -717,7 +736,11 @@ Bitwarden app on your phone. On the sign-in screen, before typing anything:
 Phone at home with Wi-Fi on: it works because AdGuard points the name at the server. Then turn off
 LastPass's autofill (disable or remove its extension) so the two don't fight over the same login boxes.
 
-**h. Back it up.** Your whole vault is one folder: `/opt/media/config/vaultwarden`. If that drive died
+In each app's **Settings** → **Account security**: set **Vault timeout** to 15 minutes (or *On system
+lock* on the PC) and **Timeout action** to **Lock**. On the phone, turn on **Unlock with biometrics**
+so locking often isn't a chore. A locked app is a closed safe even if someone picks up your device.
+
+**i. Back it up.** Your whole vault is one folder: `/opt/media/config/vaultwarden`. If that drive died
 without a copy, so would every password. This makes a dated copy, pausing the safe for a few seconds so
 the copy isn't caught mid-write:
 
@@ -728,7 +751,8 @@ docker compose start vaultwarden
 ```
 
 Then copy that file **off the server** (a USB stick, your PC): a backup on the same machine dies with
-it. The copy is still scrambled with your master password, so it's safe to keep on a USB stick. Do it
+it. Everything in it is still scrambled with your master password, so a strong master password keeps it
+safe; still keep the stick somewhere private, like you would a spare house key. Do it
 after the import and every so often after that (or ask me to set up a nightly one). As an extra
 safety net, the web vault's **Tools** → **Export vault** → **.json (Encrypted)** makes a password-locked
 copy you could import into any Bitwarden.
@@ -765,6 +789,10 @@ docker compose down            # stop everything (your settings and files stay)
   is missing, or Caddy needs `docker restart caddy`.
 - **The admin page says "Invalid admin token":** you're typing the password you chose in step 17b,
   not the long `$argon2id...` line. If it never works, the `.env` line probably lost its single quotes.
+  If it says the page is disabled, that's step 17e working: put a token back first.
+- **Vaultwarden keeps restarting with "permission denied" or "read-only file system":** its folder
+  belongs to root. `sudo chown -R $USER:$USER /opt/media/config/vaultwarden`, then
+  `docker compose up -d vaultwarden`.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).

@@ -50,7 +50,7 @@ vault.jevans.cloud {
 	encode zstd gzip
 
 	# Tell Vaultwarden the visitor's real address, so its log of failed logins names the right device.
-	reverse_proxy vaultwarden:80 {
+	reverse_proxy vaultwarden:8080 {
 		header_up X-Real-IP {remote_host}
 	}
 }
