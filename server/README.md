@@ -496,6 +496,36 @@ Seerr adds requests from Jellyfin's search; Sonarr and Radarr fill the calendar 
 Each section has a **Test** button. For ratings, streaming availability and reviews, it also asks for a
 free TMDB API key (from themoviedb.org → Settings → API), which is optional.
 
+### 13. Intro Skipper (a "Skip Intro" button)
+
+[Intro Skipper](https://github.com/intro-skipper/intro-skipper) is another Jellyfin plugin. It listens to
+every episode of a season, finds the stretch of music they all share (the theme tune), and marks it as
+the intro, the way you'd spot the same opening bars on every track of an album. Jellyfin then offers a
+**Skip Intro** button, or skips it for you. It finds end credits and recaps too.
+
+**a. Add its plugin store.** Dashboard → Plugins → **Repositories** → **+**:
+
+| Name | URL |
+| ---- | --- |
+| `Intro Skipper` | `https://intro-skipper.org/manifest.json` |
+
+(Opening that address in a browser shows nothing. That's normal: it only answers Jellyfin, with the
+build that matches your Jellyfin version.)
+
+**b. Install it.** Catalog → **Intro Skipper** → Install, then:
+
+```sh
+docker restart jellyfin
+```
+
+**c. Let it listen.** Dashboard → **Scheduled Tasks** → run **Detect and Analyze Media Segments**. The
+first run goes through your whole TV library, so it can take a while; after that it only checks new
+episodes. A season needs at least two episodes before it can find the shared theme.
+
+**d. Choose what happens at an intro.** Each person picks for themselves in Jellyfin: their profile →
+**Playback** → *Media segment actions*, set **Intro** to *Ask to skip* (shows the button) or *Skip*
+(skips by itself). Jellyfin Enhanced's auto-skip (step 12) uses the same markers.
+
 ## Everyday commands
 
 ```sh
