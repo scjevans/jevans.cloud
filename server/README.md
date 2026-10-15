@@ -526,6 +526,32 @@ episodes. A season needs at least two episodes before it can find the shared the
 **Playback** → *Media segment actions*, set **Intro** to *Ask to skip* (shows the button) or *Skip*
 (skips by itself). Jellyfin Enhanced's auto-skip (step 12) uses the same markers.
 
+### 14. Media Bar (a big slideshow on the home page)
+
+[Media Bar](https://github.com/IAmParadox27/jellyfin-plugin-media-bar) turns the top of Jellyfin's home
+page into a rotating banner, like the one on Netflix: full-width artwork, the title's logo, a short
+description and a Play button, with trailers if you want them.
+
+It comes from the same plugin store as File Transformation (step 12a), and it needs File Transformation
+to add itself to the page, so do step 12a and 12b first. Use Media Bar 3.x for Jellyfin 12; the
+catalog offers the build that matches your Jellyfin.
+
+**a. Install it.** Dashboard → Plugins → Catalog → **Media Bar** → Install, then:
+
+```sh
+docker restart jellyfin
+```
+
+**b. Refresh.** Open Jellyfin's home page and press Ctrl+Shift+R (twice if needed). The bar shows at the
+top. Ignore the guide's step about editing `index.html`: File Transformation does that part for you.
+
+**c. Pick what it shows.** Click the gear on the bar to choose libraries, trailers and timing. These
+choices are saved in each browser, so each person and device sets their own.
+
+**Bar doesn't appear?** Open the browser's developer tools (F12) → **Network** → tick **Disable cache**,
+then refresh with the tools still open. If Media Bar isn't in the catalog at all, it hasn't caught up to
+your Jellyfin version yet; check again after its next release.
+
 ## Everyday commands
 
 ```sh
