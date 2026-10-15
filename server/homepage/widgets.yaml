@@ -6,5 +6,7 @@
     disk: /data
 - datetime:
     format:
+      # Your time zone from .env, so the clock doesn't fall back to UTC.
+      timeZone: "{{HOMEPAGE_VAR_TZ}}"
       dateStyle: medium
       timeStyle: short
