@@ -19,6 +19,7 @@ Think of it as a small restaurant:
 | **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
 | **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
+| **Jellystat** | 3002 | Keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
 
 ### Why the tunnel matters
 
@@ -391,6 +392,64 @@ To switch the blocking off for the whole house in one click (handy while you're 
 use **Disable protection** on the AdGuard home page; it can turn itself back on after a set time.
 
 **Undo it entirely:** set the router's DNS back to automatic. Every device goes back to Verizon's DNS.
+
+### 11. Watch statistics (Jellystat)
+
+Jellyfin's own dashboard only shows what's playing right now. Jellystat is the waiter's notebook: it
+writes down every play (who, what, which device, how long) so you can look back at the most-watched
+shows, who watches the most, and when the house watches. It's home only, at `http://192.168.1.95:3002`.
+
+It keeps its notebook in a small database (Postgres) in its own container, `jellystat-db`. That
+database sits on a private line only Jellystat can use: no internet and no port on your network.
+
+**a. Get the new files.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+**b. Make its two secrets.** Jellystat needs a database password and a "JWT secret" (the stamp it puts
+on login tickets so nobody can forge one). These two lines invent long random ones and add them to
+your `.env`. Run each once:
+
+```sh
+echo "JELLYSTAT_DB_PASSWORD=$(openssl rand -hex 24)" >> ~/jevans.cloud/server/.env
+```
+
+```sh
+echo "JELLYSTAT_JWT_SECRET=$(openssl rand -hex 32)" >> ~/jevans.cloud/server/.env
+```
+
+You never need to read or type them. Don't run them twice: if you did, open `.env` with `nano` and
+delete the extra lines at the bottom before going on.
+
+**c. Start it.**
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d
+```
+
+```sh
+docker logs jellystat 2>&1 | tail -10
+```
+
+Give it a minute the first time while the database sets itself up.
+
+**d. Make a Jellyfin API key.** This is a key card Jellystat uses to read Jellyfin's records. In Jellyfin:
+Dashboard → API Keys → **+**, name it `Jellystat`, and copy the key it shows.
+
+**e. Connect them.** Open `http://192.168.1.95:3002`:
+
+1. Create a Jellystat username and password (this is just for Jellystat, not Jellyfin).
+2. Jellyfin URL: `http://jellyfin:8096`. API key: paste the one from step d. Save.
+3. Settings → Tasks: run **Full Sync** once, so it reads in your libraries and Jellyfin's past plays.
+
+From then on it checks Jellyfin on its own every few minutes. Use the plain `http://jellyfin:8096`, not
+`https://media.jevans.cloud`: the two containers talk inside the server and never leave the house.
+
+**Want history from before today?** Jellyfin only keeps a short activity log. If you install Jellyfin's
+**Playback Reporting** plugin (Dashboard → Plugins → Catalog), Jellystat can import its history under
+Settings → Tasks → Import Playback Reporting Data. Optional.
 
 ## Everyday commands
 
