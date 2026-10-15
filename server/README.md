@@ -548,6 +548,10 @@ top. Ignore the guide's step about editing `index.html`: File Transformation doe
 **c. Pick what it shows.** Click the gear on the bar to choose libraries, trailers and timing. These
 choices are saved in each browser, so each person and device sets their own.
 
+To turn trailers off for everyone, Dashboard → Plugins → **Media Bar** → untick **Enable Trailers?** →
+**Save**. That server setting wins over the gear, so trailers stay off even for someone who switches them
+back on there.
+
 **Bar doesn't appear?** Open the browser's developer tools (F12) → **Network** → tick **Disable cache**,
 then refresh with the tools still open. If Media Bar isn't in the catalog at all, it hasn't caught up to
 your Jellyfin version yet; check again after its next release.
