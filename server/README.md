@@ -18,6 +18,7 @@ Think of it as a small restaurant:
 | **Gluetun** | | A VPN tunnel that qBittorrent and Prowlarr live inside | A sealed tunnel the van must drive through |
 | **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
 | **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
+| **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 
 ### Why the tunnel matters
 
@@ -300,6 +301,97 @@ using `http://192.168.1.95:3000`.
 **d. Check it.** Open `https://home.jevans.cloud` on that computer. On your phone with Wi-Fi off, the
 same address should fail to load: that's the lock working.
 
+### 10. Block ads and trackers for the whole house
+
+Every time a phone, TV or laptop opens a website, it first asks a **DNS server** "what's the address
+for this name?", like looking a number up in a phone book. AdGuard Home becomes your house's phone
+book. For a short list of known ad and tracking names it answers "no such number", so the ad never
+loads. Everything else gets the real answer. Nobody has to install anything on their device.
+
+**How strict is it?** Mild on purpose. It uses one list, the **AdGuard DNS filter**, which is built to
+block ads and trackers without breaking sites. It blocks far less than the aggressive lists people
+stack up, so normal browsing, shopping, streaming apps and sign-ins keep working. It won't catch
+everything (YouTube ads, for example, come from the same names as the videos, so DNS can't split them).
+
+**a. Start it.** Ubuntu already runs its own small DNS helper on `127.0.0.53`, so AdGuard only listens
+on the server's home address (`192.168.1.95`). They sit side by side without a fight.
+
+```sh
+cd ~/jevans.cloud && git pull
+cd server && docker compose up -d
+docker logs adguard 2>&1 | tail -5
+```
+
+If it says `address already in use` for port 53, run `sudo ss -lunp 'sport = :53'` and tell me what's
+listed.
+
+**b. The setup page.** Open `http://192.168.1.95:3001` and click through:
+
+- **Admin web interface:** listen on *All interfaces*, port **3000** (not the suggested 80).
+  Inside the box it's 3000; from your network it's 3001, the same "door number swap" the compose file
+  does for the other apps.
+- **DNS server:** *All interfaces*, port **53**.
+- Make a username and a strong password, then sign in at `http://192.168.1.95:3001`.
+
+**c. Keep the list mild.** Filters → DNS blocklists: leave **AdGuard DNS filter** on and turn off
+anything else that's ticked. Settings → DNS settings: the default upstream (Quad9, encrypted) is
+fine. It also means your ISP no longer sees the list of sites the house looks up, which suits this
+project.
+
+**d. Teach it your own names (bonus).** Filters → DNS rewrites → Add, once for each:
+
+| Domain | Answer |
+| ------ | ------ |
+| `media.jevans.cloud` | `192.168.1.95` |
+| `requests.jevans.cloud` | `192.168.1.95` |
+| `home.jevans.cloud` | `192.168.1.95` |
+
+The Fios router can't loop your public address back inside, which is why you needed hosts-file lines
+and `:8096` addresses at home. With these rewrites, the phone book just gives home devices the
+server's inside address, so the nice names work at home on every device, phones included.
+
+**e. Test it on one device first.** Before touching the router, from your PC:
+
+```sh
+nslookup doubleclick.net 192.168.1.95       # should answer 0.0.0.0 (blocked)
+nslookup wikipedia.org 192.168.1.95         # should answer a real address
+nslookup media.jevans.cloud 192.168.1.95    # should answer 192.168.1.95
+```
+
+**f. Hand it to the whole house.** In the Fios router (`http://192.168.1.1`): My Network → Network
+Connections → **Network (Home/Office)** → Edit → Settings. Find **DNS Server**, choose *Use the
+following DNS Server addresses*, and enter:
+
+- **Primary:** `192.168.1.95`
+- **Secondary:** `1.1.1.1`
+
+Apply. Devices pick up the new phone book when they reconnect to Wi-Fi (or within a day on their own).
+The menus move a little between Fios router models; the setting you're after is the DNS server the
+router hands out to your devices. If you can only find a DNS setting under **Broadband Connection**,
+that works too: the router then asks AdGuard for everyone, so the AdGuard log shows every request as
+coming from `192.168.1.1` instead of from each device.
+
+**What if the server is off?** That's what the secondary is for. If AdGuard doesn't answer, devices
+quietly ask `1.1.1.1` instead, so the internet keeps working for everyone, just with ads. The cost:
+some devices also use the secondary now and then when the server is fine, so a few ads slip through,
+and on those moments `home.jevans.cloud` may fail to load on a phone. For a shared house, "always
+works, catches most ads" beats "catches every ad, breaks the internet when the server reboots". If
+you'd rather be strict, leave the secondary blank, and remember: server down means no websites for
+anyone at home until it's back or you undo this step.
+
+**g. When a site breaks.** Someone says a link or an app won't load:
+
+1. In AdGuard, open **Query Log** and filter by *Blocked*. Look for names from around that time that
+   belong to the broken site (a shopping site's checkout, a link-tracking name in an email, and so on).
+2. Click the row and choose **Unblock**. That adds an allow line for just that name, like
+   `@@||click.example.com^`, under Filters → Custom filtering rules. You can add them there by hand too.
+3. Try again. The fix is instant for new lookups; if the device still fails, turn its Wi-Fi off and on.
+
+To switch the blocking off for the whole house in one click (handy while you're finding the culprit),
+use **Disable protection** on the AdGuard home page; it can turn itself back on after a set time.
+
+**Undo it entirely:** set the router's DNS back to automatic. Every device goes back to Verizon's DNS.
+
 ## Everyday commands
 
 ```sh
@@ -318,3 +410,7 @@ docker compose down            # stop everything (your settings and files stay)
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).
+- **Websites stop loading for everyone at home:** AdGuard is down and the router has no secondary
+  DNS. `docker compose up -d adguard`, or set the router's DNS back to automatic. If `docker logs
+  adguard` says it `cannot assign requested address`, the server started Docker before it had its
+  network address: `docker compose up -d adguard` again fixes it.
