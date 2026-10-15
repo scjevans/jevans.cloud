@@ -3,7 +3,20 @@
 # and passes each visitor through to the right app. Nothing else on the server is reachable this way.
 # home.jevans.cloud (the dashboard) is the exception that proves the rule: it only answers inside your home.
 
+# A "please don't list me" sign for search engines like Google and Bing.
+# Jellyfin and Seerr are sign-in pages for you and your friends, not something strangers should find in search results.
+# robots.txt asks crawlers not to look around, and the X-Robots-Tag header tells them not to list any page they do see.
+(no_search_engines) {
+	header X-Robots-Tag "noindex, nofollow"
+	respond /robots.txt <<TXT
+		User-agent: *
+		Disallow: /
+		TXT 200
+}
+
 media.jevans.cloud {
+	import no_search_engines
+
 	# Squeeze the web pages and API replies (video is already compressed, so it is left alone).
 	encode zstd gzip
 
@@ -12,6 +25,8 @@ media.jevans.cloud {
 
 # Seerr: where people ask for movies and shows. They sign in with their Jellyfin account.
 requests.jevans.cloud {
+	import no_search_engines
+
 	encode zstd gzip
 
 	reverse_proxy seerr:5055
