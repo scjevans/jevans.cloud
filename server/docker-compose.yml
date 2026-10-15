@@ -13,6 +13,9 @@ networks:
         - subnet: 172.30.0.0/24
   # The dashboard and its Docker helper talk on their own network, away from the media apps.
   dashboard:
+  # Jellystat and its database talk on a private line. The database has no internet and no door to your network.
+  jellystat:
+    internal: true
 
 x-common-env: &common-env
   PUID: ${PUID}
@@ -175,6 +178,52 @@ services:
     networks:
       media:
         ipv4_address: 172.30.0.14
+    restart: unless-stopped
+
+  # Watch statistics for Jellyfin: who watched what, when, and for how long. Home only, no Caddy site.
+  # Open it at http://<server-ip>:3002. See README.md step 11.
+  jellystat:
+    image: cyfershepard/jellystat:latest
+    container_name: jellystat
+    depends_on:
+      jellystat-db:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      POSTGRES_IP: jellystat-db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: jellystat
+      POSTGRES_PASSWORD: ${JELLYSTAT_DB_PASSWORD}
+      JWT_SECRET: ${JELLYSTAT_JWT_SECRET}
+    ports:
+      # 3000 inside, 3002 outside: the dashboard has 3000 and AdGuard has 3001.
+      - 3002:3000
+    volumes:
+      - ${CONFIG_DIR}/jellystat/backup-data:/app/backend/backup-data
+    networks:
+      jellystat:
+      # So it can reach Jellyfin at http://jellyfin:8096.
+      media:
+        ipv4_address: 172.30.0.16
+    restart: unless-stopped
+
+  # Jellystat's notebook: a small Postgres database. Only Jellystat can reach it.
+  jellystat-db:
+    image: postgres:15
+    container_name: jellystat-db
+    environment:
+      POSTGRES_USER: jellystat
+      # Only used the very first time, when the database is created. Changing it later in .env does nothing.
+      POSTGRES_PASSWORD: ${JELLYSTAT_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jellystat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ${CONFIG_DIR}/jellystat/db:/var/lib/postgresql/data
+    networks:
+      - jellystat
     restart: unless-stopped
 
   # ---- The front door: lets people outside your home reach Jellyfin and Seerr, and nothing else. ----
