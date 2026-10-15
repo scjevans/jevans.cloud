@@ -168,6 +168,7 @@ services:
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
+      TZ: ${TZ}
       HOMEPAGE_ALLOWED_HOSTS: ${SERVER_IP}:3000
       HOMEPAGE_VAR_SERVER_IP: ${SERVER_IP}
     ports:
