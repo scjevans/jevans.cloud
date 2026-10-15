@@ -17,7 +17,7 @@ Think of it as a small restaurant:
 | **qBittorrent** | 8080 | Does the actual downloading | The delivery van |
 | **Gluetun** | | A VPN tunnel that qBittorrent and Prowlarr live inside | A sealed tunnel the van must drive through |
 | **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
-| **Caddy** | 80, 443 | Lets the outside world reach Jellyfin (and nothing else) over HTTPS | The host at the front door |
+| **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
 
 ### Why the tunnel matters
 
@@ -233,6 +233,34 @@ inside. Nothing's broken: use `http://192.168.1.95:8096` at home.
 ending in `.ts.net`, so it can't answer at `media.jevans.cloud`, which is what the website checks.
 It also caps bandwidth, which video quickly hits. Plain Tailscale (no Funnel) is still a good
 private way in for you alone, if you'd rather not open any ports.
+
+### 8. Make Seerr reachable from outside
+
+Do step 7 first. This adds a second door, `https://requests.jevans.cloud`, so people can ask for
+movies and shows from anywhere. The router gate is already open, so it only needs a name and a restart.
+
+**a. DNS.** Add one more record next to `media`, with the same value:
+
+| Type | Name | Value | TTL |
+| ---- | ---- | ----- | --- |
+| `A` | `requests` | your home's public IP | 5 min (or the lowest offered) |
+
+**b. Restart Caddy** so it reads the new door and fetches its certificate:
+
+```sh
+cd ~/jevans.cloud && git pull
+cd server && docker compose up -d && docker restart caddy
+docker logs caddy 2>&1 | grep -i requests.jevans.cloud
+```
+
+**c. Tell Seerr it's behind a receptionist.** In Seerr: Settings → General, set Application URL to
+`https://requests.jevans.cloud`, tick **Enable Proxy Support**, and save. Like Jellyfin's known
+proxy, this lets Seerr see each visitor's real address instead of Caddy's, and makes the links in
+its notifications point at the outside address.
+
+**d. Check it.** On your phone with Wi-Fi off, open `https://requests.jevans.cloud` and sign in with
+a Jellyfin account. Anyone who can sign in to Jellyfin can sign in here, which is another reason
+every Jellyfin account needs a strong password.
 
 ## Everyday commands
 
