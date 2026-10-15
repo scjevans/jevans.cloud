@@ -1,0 +1,13 @@
+# The strip along the top of the page.
+- resources:
+    label: Server
+    cpu: true
+    memory: true # RAM: used and total
+    disk: /data
+    expanded: true # show the amounts in full, not just bars
+- datetime:
+    format:
+      # Your time zone from .env, so the clock doesn't fall back to UTC.
+      timeZone: "{{HOMEPAGE_VAR_TZ}}"
+      dateStyle: medium
+      timeStyle: short

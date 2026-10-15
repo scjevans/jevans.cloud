@@ -15,6 +15,7 @@ Think of it as a small restaurant:
 | **Bazarr** | 6767 | Finds subtitles for what Sonarr/Radarr filed | The translator |
 | **qBittorrent** | 8080 | Does the actual downloading | The delivery van |
 | **Gluetun** | | A VPN tunnel that qBittorrent and Prowlarr live inside | A sealed tunnel the van must drive through |
+| **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
 
 ### Why the tunnel matters
 
@@ -130,7 +131,21 @@ Host `http://localhost:8191`, Tags `flaresolverr`. Then edit the blocked indexer
 **Jellyfin** (`:8096`)
 1. Follow the setup wizard. Add libraries: Shows → `/data/media/tv`, Movies → `/data/media/movies`.
 
-### 6. Make it reachable from outside (optional)
+### 6. The dashboard
+
+Open `http://<server-ip>:3000`. Each app gets a tile with a green "running" badge (red if stopped),
+its CPU and memory use, and a click-through to open it. The top strip shows the server's CPU,
+memory and how full `/data` is.
+
+Homepage learns what's running from a small helper, `dockerproxy`, rather than from Docker directly.
+Docker's control socket is like a master key to the whole server; the helper is a doorman who will
+answer "what's running?" but refuses to start, stop or create anything.
+
+To change the dashboard, edit the files in `homepage/` (`services.yaml` holds the tiles). It reloads
+on its own, just refresh the page. If the page says "Host validation failed", `SERVER_IP` in `.env`
+doesn't match the address you typed in the browser.
+
+### 7. Make it reachable from outside (optional)
 
 The [main README](../README.md#jellyfin-when-you-get-to-it) covers putting Jellyfin at
 `https://media.jevans.cloud` with Caddy. Only expose Jellyfin this way; keep the other apps

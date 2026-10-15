@@ -1,0 +1,55 @@
+# One tile per app. `container` is the name from docker-compose.yml: Homepage uses it to show
+# a running/stopped badge plus CPU and memory. `href` is what opens when you click the tile.
+# {{HOMEPAGE_VAR_SERVER_IP}} is filled in from SERVER_IP in your .env.
+
+- Watch:
+    - Jellyfin:
+        icon: jellyfin.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:8096
+        description: Watch your library
+        server: docker
+        container: jellyfin
+
+- Find:
+    - Sonarr:
+        icon: sonarr.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:8989
+        description: TV shows
+        server: docker
+        container: sonarr
+    - Radarr:
+        icon: radarr.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:7878
+        description: Movies
+        server: docker
+        container: radarr
+    - Prowlarr:
+        icon: prowlarr.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:9696
+        description: Indexers (inside the VPN)
+        server: docker
+        container: prowlarr
+    - Bazarr:
+        icon: bazarr.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:6767
+        description: Subtitles
+        server: docker
+        container: bazarr
+
+- Download:
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:8080
+        description: Downloads (inside the VPN)
+        server: docker
+        container: qbittorrent
+    - Gluetun:
+        icon: gluetun.png
+        description: The VPN tunnel
+        server: docker
+        container: gluetun
+    - FlareSolverr:
+        icon: flaresolverr.png
+        description: Gets Prowlarr past Cloudflare
+        server: docker
+        container: flaresolverr
