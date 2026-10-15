@@ -12,6 +12,8 @@ background:
 # Frosted-glass tiles: the photo shows through, blurred.
 cardBlur: md
 hideVersion: true
+# Show each app's CPU and RAM right on its tile, without needing a click.
+showStats: true
 layout:
   Watch:
     style: row
