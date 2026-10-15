@@ -12,6 +12,7 @@ Think of it as a small restaurant:
 | **Sonarr** | 8989 | Watches for TV episodes you want, sends them to be fetched, files them | The TV menu manager |
 | **Radarr** | 7878 | Same job for movies | The movie menu manager |
 | **Prowlarr** | 9696 | Keeps your list of indexers (search sites) and shares it with Sonarr/Radarr | The supplier phone book |
+| **Seerr** | 5055 | Where people ask for a movie or show; approved asks go to Sonarr/Radarr | The order counter |
 | **Bazarr** | 6767 | Finds subtitles for what Sonarr/Radarr filed | The translator |
 | **qBittorrent** | 8080 | Does the actual downloading | The delivery van |
 | **Gluetun** | | A VPN tunnel that qBittorrent and Prowlarr live inside | A sealed tunnel the van must drive through |
@@ -65,7 +66,10 @@ cd jevans.cloud/server
 ```sh
 sudo mkdir -p /data/torrents/{movies,tv} /data/media/{movies,tv} /opt/media/config
 sudo chown -R $USER:$USER /data /opt/media
+mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
 ```
+
+Seerr always runs as user 1000 inside its container, so its folder belongs to 1000 whatever your own ID is.
 
 If you have a big second drive, mount it at `/data` first (or point `DATA_DIR` at it in step 3).
 
@@ -131,6 +135,18 @@ Host `http://localhost:8191`, Tags `flaresolverr`. Then edit the blocked indexer
 
 **Jellyfin** (`:8096`)
 1. Follow the setup wizard. Add libraries: Shows → `/data/media/tv`, Movies → `/data/media/movies`.
+
+**Seerr** (`:5055`), after Jellyfin is set up
+1. Choose **Jellyfin** as your server type. Jellyfin URL: Hostname `jellyfin`, Port `8096`, no SSL.
+   Sign in with your Jellyfin admin account; that account becomes Seerr's admin too.
+2. Sync libraries, tick Movies and Shows, then Continue.
+3. Add a Radarr server: Hostname `radarr`, Port `7878`, Radarr's API key, Test, then pick the
+   quality profile and root folder `/data/media/movies`. Tick **Default Server**.
+4. Add a Sonarr server the same way: Hostname `sonarr`, Port `8989`, root folder `/data/media/tv`,
+   **Default Server** ticked.
+5. Settings → Users → Import Jellyfin Users, so your family can sign in with their Jellyfin logins.
+   Requests from people other than you wait for your approval unless you give them "Auto-Approve"
+   (Users → edit a user → Permissions).
 
 ### 6. The dashboard
 
