@@ -9,6 +9,12 @@
         description: Watch your library
         server: docker
         container: jellyfin
+    - Seerr:
+        icon: seerr.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:5055
+        description: Request movies and shows
+        server: docker
+        container: seerr
 
 - Find:
     - Sonarr:

@@ -158,6 +158,25 @@ services:
         ipv4_address: 172.30.0.10
     restart: unless-stopped
 
+  # Lets people ask for a movie or show. Approved requests go straight to Sonarr/Radarr.
+  # Open it at http://<server-ip>:5055. Home network only for now (Caddy doesn't pass it through).
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    # Seerr runs as user 1000 inside the container; its config folder must belong to 1000. See README.md step 5.
+    init: true
+    environment:
+      TZ: ${TZ}
+      LOG_LEVEL: info
+    ports:
+      - 5055:5055
+    volumes:
+      - ${CONFIG_DIR}/seerr:/app/config
+    networks:
+      media:
+        ipv4_address: 172.30.0.14
+    restart: unless-stopped
+
   # ---- The front door: lets people outside your home reach Jellyfin, and only Jellyfin. ----
   # Serves https://media.jevans.cloud with a free, self-renewing certificate. See README.md step 7.
   caddy:
