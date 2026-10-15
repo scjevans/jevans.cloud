@@ -150,7 +150,7 @@ Host `http://localhost:8191`, Tags `flaresolverr`. Then edit the blocked indexer
 
 ### 6. The dashboard
 
-Open `http://<server-ip>:3000`. Each app gets a tile with a green "running" badge (red if stopped),
+Open `http://<server-ip>:3000` (or `https://home.jevans.cloud` once you've done step 9). Each app gets a tile with a green "running" badge (red if stopped),
 its CPU and memory use, and a click-through to open it. The top strip shows the server's CPU,
 memory and how full `/data` is.
 
@@ -261,6 +261,44 @@ its notifications point at the outside address.
 **d. Check it.** On your phone with Wi-Fi off, open `https://requests.jevans.cloud` and sign in with
 a Jellyfin account. Anyone who can sign in to Jellyfin can sign in here, which is another reason
 every Jellyfin account needs a strong password.
+
+### 9. A friendly address for the dashboard (home only)
+
+This puts the dashboard at `https://home.jevans.cloud` instead of `http://192.168.1.95:3000`. It is
+**not** reachable from outside: Caddy checks where each visitor comes from and hangs up on anyone who
+isn't on your home network. (Why not `jevans.cloud/homepage`? `jevans.cloud` itself lives on GitHub's
+servers, not yours, so a path on it can't reach your house. A sub-name like `home.` can.)
+
+**a. DNS.** Add one more record next to `media`, with the same value:
+
+| Type | Name | Value | TTL |
+| ---- | ---- | ----- | --- |
+| `A` | `home` | your home's public IP | 5 min (or the lowest offered) |
+
+This is only so Caddy can get the HTTPS padlock for the name; outside visitors still get turned away.
+
+**b. Restart the dashboard and Caddy:**
+
+```sh
+cd ~/jevans.cloud && git pull
+cd server && docker compose up -d && docker restart caddy
+docker logs caddy 2>&1 | grep -i home.jevans.cloud
+```
+
+**c. Point your computer at the server directly.** The Fios router can't loop a request for your own
+public address back inside (the same reason `media.jevans.cloud` needed this). Add this line to your
+hosts file, next to the `media.jevans.cloud` one:
+
+```
+192.168.1.95  home.jevans.cloud
+```
+
+On Windows that file is `C:\Windows\System32\drivers\etc\hosts` (open Notepad as administrator);
+on a Mac or Linux it's `/etc/hosts` (`sudo nano /etc/hosts`). Phones can't do this, so on a phone keep
+using `http://192.168.1.95:3000`.
+
+**d. Check it.** Open `https://home.jevans.cloud` on that computer. On your phone with Wi-Fi off, the
+same address should fail to load: that's the lock working.
 
 ## Everyday commands
 

@@ -1,6 +1,7 @@
 # Caddy: the front door for Jellyfin and Seerr from the internet.
 # It answers https://media.jevans.cloud and https://requests.jevans.cloud, gets and renews the HTTPS certificate on its own,
 # and passes each visitor through to the right app. Nothing else on the server is reachable this way.
+# home.jevans.cloud (the dashboard) is the exception that proves the rule: it only answers inside your home.
 
 media.jevans.cloud {
 	# Squeeze the web pages and API replies (video is already compressed, so it is left alone).
@@ -14,4 +15,13 @@ requests.jevans.cloud {
 	encode zstd gzip
 
 	reverse_proxy seerr:5055
+}
+
+# The dashboard, home-only. Caddy still gets it a real HTTPS certificate,
+# but anyone not on your home network is turned away before they see anything.
+home.jevans.cloud {
+	@outside not remote_ip private_ranges
+	abort @outside
+
+	reverse_proxy homepage:3000
 }
