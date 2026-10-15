@@ -552,6 +552,39 @@ choices are saved in each browser, so each person and device sets their own.
 then refresh with the tools still open. If Media Bar isn't in the catalog at all, it hasn't caught up to
 your Jellyfin version yet; check again after its next release.
 
+### 15. Abyss theme (a new look for Jellyfin)
+
+[Abyss](https://github.com/AumGupta/abyss-jellyfin) is a theme: a dark, glassy, rounded look. It's just
+CSS, the styling rules that decide colours and shapes, like a new coat of paint that leaves the house's
+walls alone. Jellyfin loads it from the internet each time a page opens, so there's nothing to install
+on the server, and deleting the lines puts the old look straight back.
+
+**a. Paste the theme.** Dashboard → **Branding** → **Custom CSS**, paste these lines, then **Save**:
+
+```css
+@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/abyss.css');
+@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/styles/abyss-je.css');
+@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/styles/abyss-mbe.css');
+```
+
+The first line is the theme. The other two restyle Jellyfin Enhanced (step 12) and the Media Bar (step
+14) to match. The Media Bar one was written for a sister version of the plugin, so if the bar looks
+worse with it, delete that line.
+
+**b. Use the dark base.** Your profile → **Display** → Theme: **Dark**, and tick **Show backdrops**.
+Abyss is built on top of the dark theme. Then refresh with Ctrl+F5.
+
+**Optional extras**, pasted below the lines above:
+
+- A lighter version for phones and TVs (less blur and animation):
+  `@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/styles/abyss-lite.css');`
+- A different accent colour, for example soft blue (the same colour written two ways, both are needed):
+  `:root { --abyss-accent: 100, 160, 255; --abyss-accent-channel: 100 160 255; }`
+
+Skip the theme's "Spotlight" add-on and its installer. Spotlight is its own home-page slideshow, which
+Media Bar already does, and it works by editing files inside the Jellyfin container that are replaced
+on every update.
+
 ## Everyday commands
 
 ```sh
