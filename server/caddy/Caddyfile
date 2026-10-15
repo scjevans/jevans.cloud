@@ -1,7 +1,7 @@
 # Caddy: the front door for Jellyfin and Seerr from the internet.
 # It answers https://media.jevans.cloud and https://requests.jevans.cloud, gets and renews the HTTPS certificate on its own,
 # and passes each visitor through to the right app. Nothing else on the server is reachable this way.
-# home.jevans.cloud (the dashboard) is the exception that proves the rule: it only answers inside your home.
+# home.jevans.cloud (the dashboard) and vault.jevans.cloud (the password safe) are the exceptions: they only answer inside your home.
 
 # A "please don't list me" sign for search engines like Google and Bing.
 # Jellyfin and Seerr are sign-in pages for you and your friends, not something strangers should find in search results.
@@ -39,4 +39,18 @@ home.jevans.cloud {
 	abort @outside
 
 	reverse_proxy homepage:3000
+}
+
+# Vaultwarden, the password safe, home-only like the dashboard. The Bitwarden apps need the real HTTPS
+# certificate Caddy gets here. Live updates between your devices ride the same connection, nothing extra needed.
+vault.jevans.cloud {
+	@outside not remote_ip private_ranges
+	abort @outside
+
+	encode zstd gzip
+
+	# Tell Vaultwarden the visitor's real address, so its log of failed logins names the right device.
+	reverse_proxy vaultwarden:80 {
+		header_up X-Real-IP {remote_host}
+	}
 }

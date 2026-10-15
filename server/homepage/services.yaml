@@ -79,3 +79,9 @@
         description: Server health charts
         server: docker
         container: grafana
+    - Vaultwarden:
+        icon: vaultwarden.png
+        href: https://vault.jevans.cloud
+        description: Your passwords (home only)
+        server: docker
+        container: vaultwarden

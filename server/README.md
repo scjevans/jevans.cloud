@@ -21,6 +21,7 @@ Think of it as a small restaurant:
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 | **Jellystat** | 3002 | Keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
 | **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
+| **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
 
 ### Why the tunnel matters
 
@@ -348,6 +349,7 @@ project.
 | `media.jevans.cloud` | `192.168.1.95` |
 | `requests.jevans.cloud` | `192.168.1.95` |
 | `home.jevans.cloud` | `192.168.1.95` |
+| `vault.jevans.cloud` | `192.168.1.95` |
 
 The Fios router can't loop your public address back inside, which is why you needed hosts-file lines
 and `:8096` addresses at home. With these rewrites, the phone book just gives home devices the
@@ -606,6 +608,131 @@ The **Media server** dashboard comes from the repo, so changes you make to it in
 replaced the next time Grafana restarts. To build your own, use **New** → **New dashboard**, or on
 the Media server dashboard use **Save as** to make your own copy.
 
+### 17. Your own password safe (Vaultwarden)
+
+**What it is.** Bitwarden is a password manager, like LastPass. It comes in two halves: the **apps**
+(browser extension, phone app, desktop app) and the **server** that keeps your vault and keeps every
+device in sync. Vaultwarden is a home-made copy of that server half. The official Bitwarden apps
+can't tell the difference, so you get Bitwarden's polished apps with your passwords living in your
+house instead of someone else's data centre.
+
+Think of it like a bank's safe-deposit box, except the box is in your own back office and only you
+have the key. The key is your **master password**: your vault is scrambled with it *on your device*
+before it is ever sent, so the server only ever stores scrambled data. Even someone who stole the
+server's drive couldn't read your passwords without it.
+
+**Where it can be reached.** Home only, like the dashboard: `https://vault.jevans.cloud`. Caddy hangs
+up on anyone who isn't on your home network, and Vaultwarden has no port of its own. When you're out,
+the apps still show every password (they keep a scrambled copy on the device and open it with your
+master password); they just can't save new ones or sync until you're home again. If you later want
+full syncing away from home, ask: Tailscale (a private tunnel only your own devices can use) is the
+safe way to do that. Opening a password safe to the whole internet isn't.
+
+**a. DNS.** One more record next to `home`, same value, for the same reason (so Caddy can get the
+HTTPS padlock; the Bitwarden apps refuse to connect without it):
+
+| Type | Name | Value | TTL |
+| ---- | ---- | ----- | --- |
+| `A` | `vault` | your home's public IP | 5 min (or the lowest offered) |
+
+Then in AdGuard (`http://192.168.1.95:3001`): Filters → DNS rewrites → Add `vault.jevans.cloud` →
+`192.168.1.95`, so every device at home, phones included, finds it. On your PC, if it uses the hosts file
+rather than AdGuard, add `192.168.1.95  vault.jevans.cloud` there too (see step 9c).
+
+**b. Make the admin password.** Vaultwarden has a settings page at `/admin`. Its password is stored
+*scrambled* (a "hash"), so even someone reading your `.env` can't learn it. Run this, type a new
+password twice (it's for the settings page only, **not** your master password; save it in your password
+manager later):
+
+```sh
+cd ~/jevans.cloud && git pull
+docker run --rm -it vaultwarden/server /vaultwarden hash
+```
+
+It prints a line starting `ADMIN_TOKEN='$argon2id$...`. Open `.env` (`nano ~/jevans.cloud/server/.env`)
+and add these two lines at the bottom, pasting everything from the first `'` to the last `'` after the
+`=` on the second line:
+
+```
+VAULTWARDEN_SIGNUPS_ALLOWED=true
+VAULTWARDEN_ADMIN_TOKEN='$argon2id$v=19$m=65540,t=3,p=4$...the rest of the line...'
+```
+
+Keep the single quotes: without them Docker reads every `$` as the start of a setting name and mangles it.
+
+**c. Start it and make your account.**
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d && docker restart caddy
+docker logs vaultwarden 2>&1 | tail -5
+```
+
+Open `https://vault.jevans.cloud` on your PC → **Create account**. Pick a **master password** you've
+never used anywhere: a few random words strung together (`maple-orbit-cactus-lantern`) is strong and
+memorable. Write it down on paper and keep it somewhere safe at home. **Nobody can reset it**, not
+you, not me, not the admin page. Lose it and the vault is gone for good.
+
+**d. Close the sign-up door.** Now that your account exists, stop anyone else making one. In `.env`
+change `VAULTWARDEN_SIGNUPS_ALLOWED=true` to `false`, then:
+
+```sh
+docker compose up -d vaultwarden
+```
+
+Want to give someone in the house their own vault later? Use the admin page (`/admin` → Users →
+Invite User); you don't need to open sign-ups again.
+
+**e. Turn on two-step login.** In the web vault: your avatar (top right) → **Account settings** →
+**Security** → **Two-step login** → **Authenticator app**. Scan the code with an authenticator app
+(Google Authenticator, Microsoft Authenticator, Aegis...). Save the **recovery code** it shows on the
+same paper as your master password.
+
+**f. Bring your passwords over from LastPass.**
+
+> ⚠️ The file LastPass gives you is every password you own **in plain, readable text**. Treat it
+> like cash left on the table. Never email it, never upload it, never paste it into a chat (including
+> this one), and never put it in this repo. Do this on your own PC and delete the file as soon as the
+> import is done.
+
+1. Sign in at [lastpass.com](https://lastpass.com) → **Advanced Options** (bottom left) → **Export**.
+   It asks for your LastPass master password, and it may email you to confirm first: click the link,
+   then Export again. It downloads `lastpass_export.csv`.
+2. In your new vault at `https://vault.jevans.cloud`: **Tools** → **Import data**. File format:
+   **LastPass (csv)**. Choose the file, click **Import data**.
+3. Check it: the count should roughly match LastPass, and LastPass folders become Bitwarden folders.
+   Open a few logins and secure notes and make sure they're right.
+4. **Delete the CSV** from your Downloads folder, then empty the Recycle Bin.
+
+What doesn't come across: file attachments (download any from LastPass by hand and add them to the
+items) and sharing with other people. Keep your LastPass account for a few weeks until you're sure
+nothing is missing, then close it.
+
+**g. Connect the Bitwarden apps.** Install the official Bitwarden extension in your browser and the
+Bitwarden app on your phone. On the sign-in screen, before typing anything:
+
+- Find **Logging in on: bitwarden.com** (or **Accessing**) and change it to **self-hosted**.
+- **Server URL:** `https://vault.jevans.cloud`. Save.
+- Sign in with your email and master password.
+
+Phone at home with Wi-Fi on: it works because AdGuard points the name at the server. Then turn off
+LastPass's autofill (disable or remove its extension) so the two don't fight over the same login boxes.
+
+**h. Back it up.** Your whole vault is one folder: `/opt/media/config/vaultwarden`. If that drive died
+without a copy, so would every password. This makes a dated copy, pausing the safe for a few seconds so
+the copy isn't caught mid-write:
+
+```sh
+cd ~/jevans.cloud/server && docker compose stop vaultwarden
+sudo tar czf ~/vaultwarden-$(date +%F).tar.gz -C /opt/media/config vaultwarden
+docker compose start vaultwarden
+```
+
+Then copy that file **off the server** (a USB stick, your PC): a backup on the same machine dies with
+it. The copy is still scrambled with your master password, so it's safe to keep on a USB stick. Do it
+after the import and every so often after that (or ask me to set up a nightly one). As an extra
+safety net, the web vault's **Tools** → **Export vault** → **.json (Encrypted)** makes a password-locked
+copy you could import into any Bitwarden.
+
 ## Everyday commands
 
 ```sh
@@ -631,6 +758,13 @@ docker compose down            # stop everything (your settings and files stay)
   `docker logs jellyfin-discovery`, and `sudo ufw allow 7359/udp` if `sudo ufw status` says `active`.
   The server they find is `https://media.jevans.cloud`, which works at home thanks to AdGuard's DNS
   rewrites (step 10d). You can always type `http://192.168.1.95:8096` in the app instead.
+- **Bitwarden app says it can't reach the server, or a certificate error:** check you're on home
+  Wi-Fi, that the app's server URL is exactly `https://vault.jevans.cloud`, and that
+  `nslookup vault.jevans.cloud 192.168.1.95` answers `192.168.1.95` (step 17a's DNS rewrite). If the
+  browser shows `SSL_ERROR_INTERNAL_ERROR_ALERT`, Caddy has no certificate yet: the `vault` DNS record
+  is missing, or Caddy needs `docker restart caddy`.
+- **The admin page says "Invalid admin token":** you're typing the password you chose in step 17b,
+  not the long `$argon2id...` line. If it never works, the `.env` line probably lost its single quotes.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).
