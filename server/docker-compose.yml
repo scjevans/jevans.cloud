@@ -198,7 +198,8 @@ services:
     restart: unless-stopped
 
   # ---- The dashboard: one page showing every container, with links. ----
-  # Open it at http://<server-ip>:3000. Its layout lives in the homepage/ folder next to this file.
+  # Open it at https://home.jevans.cloud (home only, through Caddy) or http://<server-ip>:3000.
+  # Its layout lives in the homepage/ folder next to this file.
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
@@ -208,7 +209,7 @@ services:
       PUID: ${PUID}
       PGID: ${PGID}
       TZ: ${TZ}
-      HOMEPAGE_ALLOWED_HOSTS: ${SERVER_IP}:3000
+      HOMEPAGE_ALLOWED_HOSTS: ${SERVER_IP}:3000,home.jevans.cloud
       HOMEPAGE_VAR_SERVER_IP: ${SERVER_IP}
       HOMEPAGE_VAR_TZ: ${TZ}
     ports:
@@ -218,7 +219,10 @@ services:
       # Only so the dashboard can show how full the drive is.
       - ${DATA_DIR}:/data:ro
     networks:
-      - dashboard
+      dashboard:
+      # So Caddy can reach it for home.jevans.cloud.
+      media:
+        ipv4_address: 172.30.0.30
     restart: unless-stopped
 
   # A doorman for Docker. Homepage may ask "what's running?", nothing else:
