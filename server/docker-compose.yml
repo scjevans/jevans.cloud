@@ -287,15 +287,31 @@ services:
   vaultwarden:
     image: vaultwarden/server:latest
     container_name: vaultwarden
+    # Locked down: runs as you instead of the all-powerful root user, can't gain extra powers,
+    # and can't change any of its own files. The only place it can write is its vault folder.
+    user: ${PUID}:${PGID}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       TZ: ${TZ}
       DOMAIN: https://vault.jevans.cloud
+      # Listen on 8080 inside the box: ports below 1024 need root, and it no longer runs as root.
+      ROCKET_PORT: 8080
       # Off once your account exists. README.md step 17 turns it on for one minute to make it.
       SIGNUPS_ALLOWED: ${VAULTWARDEN_SIGNUPS_ALLOWED}
       # The settings page at https://vault.jevans.cloud/admin. Its password is stored scrambled (a hash), never in plain text.
+      # Leave it blank and the page is switched off entirely (README.md step 17e).
       ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN}
       # Hide "Forgot password? Get a hint", which would otherwise show your hint to anyone who types your email.
       SHOW_PASSWORD_HINT: "false"
+      # Don't fetch each saved website's little logo. Fetching them would tell your ISP
+      # (and every one of those sites) which accounts you keep. Items show a plain globe instead.
+      DISABLE_ICON_DOWNLOAD: "true"
     volumes:
       # Your whole vault lives here (scrambled with your master password). Back this folder up.
       - ${CONFIG_DIR}/vaultwarden:/data
