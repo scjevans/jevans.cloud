@@ -627,6 +627,10 @@ docker compose down            # stop everything (your settings and files stay)
 - **Grafana or Prometheus keeps restarting with "permission denied":** their folder belongs to root.
   `sudo chown -R $USER:$USER /opt/media/config/grafana /opt/media/config/prometheus`, then
   `docker compose up -d`.
+- **Jellyfin apps at home don't list the server on their own:** check the finder is running with
+  `docker logs jellyfin-discovery`, and `sudo ufw allow 7359/udp` if `sudo ufw status` says `active`.
+  The server they find is `https://media.jevans.cloud`, which works at home thanks to AdGuard's DNS
+  rewrites (step 10d). You can always type `http://192.168.1.95:8096` in the app instead.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).
