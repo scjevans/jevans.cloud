@@ -266,6 +266,9 @@ services:
   adguard:
     image: adguard/adguardhome:latest
     container_name: adguard
+    environment:
+      # Without this it runs on UTC, so the query log and stats show the wrong hours.
+      TZ: ${TZ}
     ports:
       # DNS, bound to the server's home address only. Ubuntu's own resolver keeps 127.0.0.53:53, so they don't clash.
       - ${SERVER_IP}:53:53/tcp
