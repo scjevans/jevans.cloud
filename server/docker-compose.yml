@@ -280,6 +280,31 @@ services:
         ipv4_address: 172.30.0.15
     restart: unless-stopped
 
+  # ---- The password safe: Vaultwarden, a home-made Bitwarden server. ----
+  # The official Bitwarden apps and browser extensions talk to it as if it were Bitwarden's own cloud.
+  # No port on your network: the apps insist on HTTPS, so the only way in is
+  # https://vault.jevans.cloud through Caddy, and Caddy only lets in devices at home. See README.md step 17.
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    environment:
+      TZ: ${TZ}
+      DOMAIN: https://vault.jevans.cloud
+      # Off once your account exists. README.md step 17 turns it on for one minute to make it.
+      SIGNUPS_ALLOWED: ${VAULTWARDEN_SIGNUPS_ALLOWED}
+      # The settings page at https://vault.jevans.cloud/admin. Its password is stored scrambled (a hash), never in plain text.
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN}
+      # Hide "Forgot password? Get a hint", which would otherwise show your hint to anyone who types your email.
+      SHOW_PASSWORD_HINT: "false"
+    volumes:
+      # Your whole vault lives here (scrambled with your master password). Back this folder up.
+      - ${CONFIG_DIR}/vaultwarden:/data
+    networks:
+      media:
+        # So Caddy can reach it.
+        ipv4_address: 172.30.0.17
+    restart: unless-stopped
+
   # ---- The dashboard: one page showing every container, with links. ----
   # Open it at https://home.jevans.cloud (home only, through Caddy) or http://<server-ip>:3000.
   # Its layout lives in the homepage/ folder next to this file.
