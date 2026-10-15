@@ -147,9 +147,10 @@ services:
       - ${CONFIG_DIR}/jellyfin:/config
       # Jellyfin only needs to read your library, never change it.
       - ${DATA_DIR}/media:/data/media:ro
-    # Uncomment if your server has an Intel/AMD GPU for faster video conversion:
-    # devices:
-    #   - /dev/dri:/dev/dri
+    # The CPU's built-in graphics chip (Intel Quick Sync), for fast video conversion.
+    # Turn it on in Jellyfin: Dashboard → Playback → Transcoding. Remove these two lines on a server without /dev/dri.
+    devices:
+      - /dev/dri:/dev/dri
     networks:
       media:
         ipv4_address: 172.30.0.10
