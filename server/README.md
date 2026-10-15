@@ -451,6 +451,51 @@ From then on it checks Jellyfin on its own every few minutes. Use the plain `htt
 **Playback Reporting** plugin (Dashboard → Plugins → Catalog), Jellystat can import its history under
 Settings → Tasks → Import Playback Reporting Data. Optional.
 
+### 12. Jellyfin Enhanced (extra features inside Jellyfin)
+
+[Jellyfin Enhanced](https://github.com/n00bcodr/Jellyfin-Enhanced) is a plugin, which is like an app
+for your Jellyfin server rather than for the computer. Nothing changes in the compose file: you install
+it from Jellyfin's own plugin store, and it's saved in Jellyfin's config folder, so it survives updates.
+Once it's in, everyone who uses Jellyfin gets quality badges on posters (4K, HDR, Atmos), Seerr requests
+from Jellyfin's search, Spoiler Guard, a release calendar, bookmarks and more. Press `?` anywhere in
+Jellyfin to switch features on or off for yourself.
+
+It needs Jellyfin 10.11 or newer (Dashboard → the version is shown at the bottom). If it's older, update
+Jellyfin first with `docker compose pull jellyfin && docker compose up -d jellyfin`.
+
+**a. Add the two plugin stores.** In Jellyfin: Dashboard → Plugins → **Repositories** → **+**, twice:
+
+| Name | URL |
+| ---- | --- |
+| `File Transformation` | `https://www.iamparadox.dev/jellyfin/plugins/manifest.json` |
+| `Jellyfin Enhanced` | `https://raw.githubusercontent.com/n00bcodr/jellyfin-plugins/main/manifest.json` |
+
+File Transformation is a helper. Jellyfin Enhanced works by adding a few lines to Jellyfin's web page,
+and inside Docker that page file is read-only. The helper lets it add those lines as the page is sent
+out, instead of editing the file. Without it you'd see `Access to the path ... index.html is denied`.
+
+**b. Install File Transformation first.** Catalog → **File Transformation** → Install. Then restart:
+
+```sh
+docker restart jellyfin
+```
+
+**c. Install Jellyfin Enhanced.** Catalog → **Jellyfin Enhanced** → Install, then `docker restart jellyfin`
+again. Refresh the browser with Ctrl+F5 and press `?`: if the Enhanced panel opens, it worked.
+
+**d. Connect it to the other apps (optional).** Dashboard → Plugins → **Jellyfin Enhanced**. It talks to
+them from inside the server, so use the container names, like Seerr and Jellystat do:
+
+| App | URL | API key from |
+| --- | --- | ------------ |
+| Seerr | `http://seerr:5055` | Seerr: Settings → General → API Key |
+| Sonarr | `http://sonarr:8989` | Sonarr: Settings → General → API Key |
+| Radarr | `http://radarr:7878` | Radarr: Settings → General → API Key |
+
+Seerr adds requests from Jellyfin's search; Sonarr and Radarr fill the calendar and download progress.
+Each section has a **Test** button. For ratings, streaming availability and reviews, it also asks for a
+free TMDB API key (from themoviedb.org → Settings → API), which is optional.
+
 ## Everyday commands
 
 ```sh
