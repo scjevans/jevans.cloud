@@ -163,6 +163,18 @@ services:
         ipv4_address: 172.30.0.10
     restart: unless-stopped
 
+  # Lets Jellyfin apps at home find the server on their own. Apps shout "any Jellyfin here?" to the
+  # whole network on UDP port 7359; that shout can't get inside Docker's private network, so this
+  # sits on the server's real network, hears it, and passes it to Jellyfin, then carries the answer back.
+  jellyfin-discovery:
+    image: alpine/socat:latest
+    container_name: jellyfin-discovery
+    command: UDP4-RECVFROM:7359,broadcast,fork UDP4-SENDTO:172.30.0.10:7359
+    network_mode: host
+    depends_on:
+      - jellyfin
+    restart: unless-stopped
+
   # Lets people ask for a movie or show. Approved requests go straight to Sonarr/Radarr.
   # At home: http://<server-ip>:5055. Away: https://requests.jevans.cloud, through Caddy (README.md step 8).
   seerr:
