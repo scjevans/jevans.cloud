@@ -119,6 +119,10 @@ addresses below, not `localhost` (each container is its own little computer).
 
 Prowlarr is inside the tunnel, so it reaches Sonarr/Radarr by their fixed address instead of name.
 
+If an indexer fails with "blocked by CloudFlare Protection": Settings → Indexers → + → FlareSolverr,
+Host `http://localhost:8191`, Tags `flaresolverr`. Then edit the blocked indexer, give it the same
+`flaresolverr` tag, and Test again. FlareSolverr shares the tunnel with Prowlarr, which is why it's `localhost`.
+
 **Bazarr** (`:6767`)
 1. Settings → Sonarr: Address `sonarr`, Port `8989`, API key. Settings → Radarr: Address `radarr`, Port `7878`.
 2. Settings → Languages and Providers: pick your languages and a subtitle source or two.
