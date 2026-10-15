@@ -20,6 +20,7 @@ Think of it as a small restaurant:
 | **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 | **Jellystat** | 3002 | Keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
+| **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
 
 ### Why the tunnel matters
 
@@ -69,6 +70,7 @@ cd jevans.cloud/server
 sudo mkdir -p /data/torrents/{movies,tv} /data/media/{movies,tv} /opt/media/config
 sudo chown -R $USER:$USER /data /opt/media
 mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
+mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
 ```
 
 Seerr always runs as user 1000 inside its container, so its folder belongs to 1000 whatever your own ID is.
@@ -526,6 +528,84 @@ episodes. A season needs at least two episodes before it can find the shared the
 **Playback** → *Media segment actions*, set **Intro** to *Ask to skip* (shows the button) or *Skip*
 (skips by itself). Jellyfin Enhanced's auto-skip (step 12) uses the same markers.
 
+### 16. Server health charts (Grafana)
+
+Homepage tells you whether each app is running. Grafana tells you *how the server is doing*, and how it
+was doing last Tuesday at 9pm. Think of a car: the engine has sensors, a logbook writes down what they
+read every 30 seconds, and the dashboard turns the logbook into gauges and charts. Here that's four
+containers:
+
+| Container | Car part | What it does |
+| --------- | -------- | ------------ |
+| `node-exporter` | Engine sensors | Reads the PC itself: CPU, memory, how full each drive is, temperatures, network |
+| `cadvisor` | Sensors on each passenger | Reads every container: how much CPU, memory and network each app uses |
+| `prometheus` | The logbook | Asks both sensors for their numbers every 30 seconds and keeps 30 days of them |
+| `grafana` | The dashboard | Draws the charts. The only one you open: `http://192.168.1.95:3003` |
+
+It's home only, like Jellystat: no Caddy site and no port forwarding, so nobody outside the house can
+see it. Grafana comes already plugged into Prometheus, with a ready-made **Media server** dashboard (it's
+in `grafana/dashboards/server.json`), so there's nothing to wire up.
+
+**a. Get the new files.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+**b. Make its folders.** Grafana and Prometheus run as you, so they need folders you own. If Docker made
+them instead, they'd belong to root and the two apps couldn't save anything.
+
+```sh
+mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
+```
+
+**c. Make a password.** This adds a random password for Grafana's `admin` login to your `.env`. Run it once:
+
+```sh
+echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 12)" >> ~/jevans.cloud/server/.env
+```
+
+Then show it, so you can copy it for the first login:
+
+```sh
+grep GRAFANA ~/jevans.cloud/server/.env
+```
+
+**d. Start it.**
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d
+```
+
+```sh
+docker compose ps grafana prometheus node-exporter cadvisor
+```
+
+All four should say `Up` (or `running`).
+
+**e. Open it.** Go to `http://192.168.1.95:3003`, log in as `admin` with the password from step c. It
+opens on the **Media server** dashboard. Give it a few minutes: charts need a few readings before they
+draw a line. What's on it:
+
+- **Top row:** CPU, memory, both drives, the hottest temperature sensor, and how long since the last
+  restart. Green is fine, orange means keep an eye on it, red means look now.
+- **The server:** CPU and memory over time, network traffic, drive activity (`sda` is the system SSD,
+  `sdb` the media drive), and free space.
+- **The apps:** CPU, memory, download and upload per container. Downloads show up under `gluetun`,
+  because qBittorrent borrows its connection. Jellyfin's upload going up means someone is streaming.
+
+Change the time range top right (Last 6 hours, Last 7 days...). Click a name under a chart to show
+just that app.
+
+**Want more detail?** Grafana's community shares dashboards you can add in a few clicks. The most
+popular one for the server itself is **Node Exporter Full**: Dashboards → **New** → **Import**, type
+`1860`, **Load**, pick **Prometheus** at the bottom, **Import**. It has a page for nearly every number
+the server reports.
+
+The **Media server** dashboard comes from the repo, so changes you make to it in the browser are
+replaced the next time Grafana restarts. To build your own, use **New** → **New dashboard**, or on
+the Media server dashboard use **Save as** to make your own copy.
+
 ## Everyday commands
 
 ```sh
@@ -541,6 +621,12 @@ docker compose down            # stop everything (your settings and files stay)
   why, most often a mistyped key or address in `.env`.
 - **Can't open qBittorrent/Prowlarr from another device at home:** check `LAN_SUBNET` in `.env` matches
   your network, then `docker compose up -d` again.
+- **Grafana's top-row and "The server" charts say "No data", but the per-app ones work:** Prometheus
+  can't reach node-exporter. Run `sudo ufw status`: if it says `active`, let containers in with
+  `sudo ufw allow from 172.16.0.0/12 to any port 9100`.
+- **Grafana or Prometheus keeps restarting with "permission denied":** their folder belongs to root.
+  `sudo chown -R $USER:$USER /opt/media/config/grafana /opt/media/config/prometheus`, then
+  `docker compose up -d`.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).

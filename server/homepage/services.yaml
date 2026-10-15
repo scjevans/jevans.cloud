@@ -73,3 +73,9 @@
         description: Blocks ads and trackers for every device
         server: docker
         container: adguard
+    - Grafana:
+        icon: grafana.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:3003
+        description: Server health charts
+        server: docker
+        container: grafana
