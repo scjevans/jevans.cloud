@@ -1,0 +1,10 @@
+# Caddy: the front door for Jellyfin from the internet.
+# It answers https://media.jevans.cloud, gets and renews the HTTPS certificate on its own,
+# and passes each visitor through to Jellyfin. Nothing else on the server is reachable this way.
+
+media.jevans.cloud {
+	# Squeeze the web pages and API replies (video is already compressed, so it is left alone).
+	encode zstd gzip
+
+	reverse_proxy jellyfin:8096
+}
