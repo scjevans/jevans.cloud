@@ -559,26 +559,30 @@ It's just CSS, the styling rules that decide colours and shapes, like a new coat
 house's walls alone. Jellyfin loads it from the internet each time a page opens, so there's nothing to
 install on the server, and deleting the lines puts the old look straight back.
 
-**a. Paste the theme.** Dashboard → **Branding** → **Custom CSS**, paste these lines, then **Save**:
+ElegantFin itself was made for Jellyfin's older layout. [elegantfin-jf12](https://github.com/mihaif7/elegantfin-jf12)
+is a small extra sheet laid on top that makes it fit Jellyfin 12's new layout, so you keep the default
+Display Mode on every device.
+
+**a. Paste the theme.** Dashboard → **General** (on some versions **Branding**) → **Custom CSS**, paste
+these lines, then **Save**:
 
 ```css
 @import url("https://cdn.jsdelivr.net/gh/lscambo13/ElegantFin@main/Theme/ElegantFin-jellyfin-theme-build-latest-minified.css");
 @import url("https://cdn.jsdelivr.net/gh/lscambo13/ElegantFin@main/Theme/assets/add-ons/media-bar-plugin-support-latest-min.css");
+@import url("https://cdn.jsdelivr.net/gh/mihaif7/elegantfin-jf12@main/Theme/ElegantFin-jf12-modern-latest.css");
 ```
 
-The first line is the theme. The second restyles the Media Bar (step 14) to match; the theme's author
-made it for exactly that plugin.
+Line 1 is the theme. Line 2 restyles the Media Bar (step 14) to match. Line 3 is the Jellyfin 12 fix,
+and it has to stay **last**. The fix also styles Jellyfin Enhanced (step 12).
 
-**b. Switch to the classic layout (Jellyfin 12 only).** Jellyfin 12 has a brand-new layout that
-ElegantFin doesn't fully support yet. On each device: your profile → **Display** → **Display Mode** →
-**Desktop (Legacy)** on a computer, or **Mobile (Legacy)** on a phone. Then refresh with Ctrl+F5.
+**b. Refresh.** Press Ctrl+F5. Browsers keep the theme for up to a week, so do the same whenever an
+update hasn't shown up yet.
 
 **c. Dark or light.** ElegantFin is dark by default. For its light version, your profile → **Display** →
 Theme → **Light**.
 
-The theme's page lists more optional tweaks (a solid top bar, labels under library cards, gold IMDb
-ratings and so on); each is a block you paste below the lines above. To check which version you have,
-look at the bottom of the Settings screen. If it looks out of date, press Ctrl+F5.
+ElegantFin's own page lists more optional tweaks (a solid top bar, labels under library cards, gold IMDb
+ratings and so on). Paste any of those **above** line 3, so the Jellyfin 12 fix still comes last.
 
 ## Everyday commands
 
