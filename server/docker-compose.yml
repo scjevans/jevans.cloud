@@ -1,0 +1,142 @@
+# Media server stack: Jellyfin + the arr suite, with downloads locked inside a VPN.
+# Fill in .env first (copy .env.example), then run: docker compose up -d
+# See README.md in this folder for the full walkthrough.
+
+name: media
+
+networks:
+  media:
+    ipam:
+      config:
+        # Fixed range so the VPN firewall can allow traffic between containers,
+        # and so Prowlarr (inside the VPN) can find Sonarr/Radarr by address.
+        - subnet: 172.30.0.0/24
+
+x-common-env: &common-env
+  PUID: ${PUID}
+  PGID: ${PGID}
+  TZ: ${TZ}
+
+services:
+  # ---- The VPN tunnel. qBittorrent and Prowlarr live inside it. ----
+  gluetun:
+    image: qmcgaw/gluetun:v3
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TZ: ${TZ}
+      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER}
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY}
+      WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES}
+      SERVER_COUNTRIES: ${SERVER_COUNTRIES}
+      # Let the containers inside the tunnel talk to the rest of the stack and your home network.
+      FIREWALL_OUTBOUND_SUBNETS: 172.30.0.0/24,${LAN_SUBNET}
+    ports:
+      # The web pages of the apps inside the tunnel are published here, on gluetun.
+      - 8080:8080 # qBittorrent
+      - 9696:9696 # Prowlarr
+    volumes:
+      - ${CONFIG_DIR}/gluetun:/gluetun
+    networks:
+      media:
+        ipv4_address: 172.30.0.2
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    # Share gluetun's network. No VPN means no internet for this container: that is the kill switch.
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      WEBUI_PORT: 8080
+    volumes:
+      - ${CONFIG_DIR}/qbittorrent:/config
+      - ${DATA_DIR}:/data
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+    volumes:
+      - ${CONFIG_DIR}/prowlarr:/config
+    restart: unless-stopped
+
+  # ---- Everything below uses your normal connection. ----
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      <<: *common-env
+    ports:
+      - 8989:8989
+    volumes:
+      - ${CONFIG_DIR}/sonarr:/config
+      - ${DATA_DIR}:/data
+    networks:
+      media:
+        ipv4_address: 172.30.0.11
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      <<: *common-env
+    ports:
+      - 7878:7878
+    volumes:
+      - ${CONFIG_DIR}/radarr:/config
+      - ${DATA_DIR}:/data
+    networks:
+      media:
+        ipv4_address: 172.30.0.12
+    restart: unless-stopped
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      <<: *common-env
+    ports:
+      - 6767:6767
+    volumes:
+      - ${CONFIG_DIR}/bazarr:/config
+      - ${DATA_DIR}/media:/data/media
+    networks:
+      media:
+        ipv4_address: 172.30.0.13
+    restart: unless-stopped
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      <<: *common-env
+      JELLYFIN_PublishedServerUrl: ${JELLYFIN_URL}
+    ports:
+      - 8096:8096
+    volumes:
+      - ${CONFIG_DIR}/jellyfin:/config
+      # Jellyfin only needs to read your library, never change it.
+      - ${DATA_DIR}/media:/data/media:ro
+    # Uncomment if your server has an Intel/AMD GPU for faster video conversion:
+    # devices:
+    #   - /dev/dri:/dev/dri
+    networks:
+      media:
+        ipv4_address: 172.30.0.10
+    restart: unless-stopped

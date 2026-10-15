@@ -7,6 +7,7 @@ index.html   the set and the remote
 styles.css   colors, CRT glass, remote control
 app.js       CONFIG at the top, then the 40x24 character-screen renderer
 favicon.svg
+server/      Docker Compose stack for Jellyfin + the arr apps (see server/README.md)
 ```
 
 ## Channels
