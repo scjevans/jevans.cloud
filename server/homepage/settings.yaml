@@ -1,0 +1,15 @@
+# Dashboard look and feel. Full list of options: https://gethomepage.dev/configs/settings/
+title: jevans-server
+theme: dark
+color: slate
+headerStyle: clean
+layout:
+  Watch:
+    style: row
+    columns: 1
+  Find:
+    style: row
+    columns: 4
+  Download:
+    style: row
+    columns: 3

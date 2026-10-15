@@ -1,0 +1,10 @@
+# The strip along the top of the page.
+- resources:
+    label: Server
+    cpu: true
+    memory: true
+    disk: /data
+- datetime:
+    format:
+      dateStyle: medium
+      timeStyle: short

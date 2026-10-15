@@ -1,0 +1,5 @@
+# Where Homepage asks "is this container running?".
+# It goes through the read-only socket proxy, never straight to Docker.
+docker:
+  host: dockerproxy
+  port: 2375

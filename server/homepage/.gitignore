@@ -1,0 +1,6 @@
+# Files Homepage writes on its own while running.
+logs/
+custom.css
+custom.js
+kubernetes.yaml
+proxmox.yaml
