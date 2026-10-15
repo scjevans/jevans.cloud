@@ -16,6 +16,7 @@ Think of it as a small restaurant:
 | **qBittorrent** | 8080 | Does the actual downloading | The delivery van |
 | **Gluetun** | | A VPN tunnel that qBittorrent and Prowlarr live inside | A sealed tunnel the van must drive through |
 | **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
+| **Caddy** | 80, 443 | Lets the outside world reach Jellyfin (and nothing else) over HTTPS | The host at the front door |
 
 ### Why the tunnel matters
 
@@ -145,11 +146,77 @@ To change the dashboard, edit the files in `homepage/` (`services.yaml` holds th
 on its own, just refresh the page. If the page says "Host validation failed", `SERVER_IP` in `.env`
 doesn't match the address you typed in the browser.
 
-### 7. Make it reachable from outside (optional)
+### 7. Make Jellyfin reachable from outside
 
-The [main README](../README.md#jellyfin-when-you-get-to-it) covers putting Jellyfin at
-`https://media.jevans.cloud` with Caddy. Only expose Jellyfin this way; keep the other apps
-home-only.
+This puts Jellyfin at `https://media.jevans.cloud`, so you (and anyone you give an account) can watch
+away from home, and the website's status light on channels 2 and 3 turns ON AIR.
+
+Caddy (in the compose file) is the front door. Think of your router as the building's front gate
+and Caddy as the receptionist behind it: the gate sends every web visitor to the receptionist,
+who checks they asked for `media.jevans.cloud` and walks them to Jellyfin. The other apps have no
+door to the street at all; they stay home-only.
+
+Caddy also fetches the padlock (the HTTPS certificate) from Let's Encrypt by itself and renews it
+before it runs out. Its settings are one short file: `caddy/Caddyfile`.
+
+**a. Point the name at your house (DNS).** At whoever manages DNS for `jevans.cloud` (where you
+added the GitHub Pages records), add one record:
+
+| Type | Name | Value | TTL |
+| ---- | ---- | ----- | --- |
+| `A` | `media` | your home's public IP | 5 min (or the lowest offered) |
+
+Your public IP is what `curl -4 ifconfig.me` prints on the server. It is **not** `192.168.1.95`,
+that's the address inside your home. If your DNS host is Cloudflare, set the record to
+"DNS only" (grey cloud): streaming video through Cloudflare's free proxy breaks their terms.
+
+Leave the existing `jevans.cloud` records alone; the website stays on GitHub Pages.
+
+**b. Open the gate (port forwarding).** On the Fios router (`http://192.168.1.1`), find Port Forwarding
+(under Firewall, or Advanced → Security & Firewall on newer routers). Add two rules, both to `192.168.1.95`:
+
+| Application | Protocol | Port |
+| ----------- | -------- | ---- |
+| Custom: `caddy-https` | TCP and UDP | 443 → 443 |
+| Custom: `caddy-http` | TCP | 80 → 80 |
+
+Forward **only** these two. Never forward 8096, 8989, 8080 or the others. (Port 80 is only for
+getting the certificate; if Verizon blocks it, Caddy manages over 443 alone.)
+
+**c. Start Caddy.**
+
+```sh
+cd ~/jevans.cloud/server
+git pull
+docker compose up -d
+docker logs caddy 2>&1 | grep -i certificate
+```
+
+Look for `certificate obtained successfully`. If it complains instead, wait a few minutes for
+the DNS record to spread and run `docker restart caddy`.
+
+**d. Tell Jellyfin about its receptionist.** In Jellyfin: Dashboard → Networking → Known proxies,
+add `172.30.0.20` and save, then `docker restart jellyfin`. Without this, Jellyfin thinks every
+visitor is Caddy, so it can't tell home viewers from away ones (for streaming limits) or log who
+tried a wrong password.
+
+**e. Check it.** On your phone with Wi-Fi off, open `https://media.jevans.cloud`. You should get the
+Jellyfin login. Then open `https://jevans.cloud/#3`: it should say ON AIR with your server's name.
+
+**Before you share it**, give every Jellyfin account a strong password, and in Dashboard → Users
+untick "Allow remote connections" for any account that only ever watches at home.
+
+**If your public IP changes.** Fios addresses rarely change, but they can (after a long outage or a
+new router). If the site goes OFF AIR while Jellyfin works at home, compare `curl -4 ifconfig.me`
+with the `A` record and update it.
+
+**If it works on mobile data but not on home Wi-Fi**, your router isn't looping the request back
+inside. Nothing's broken: use `http://192.168.1.95:8096` at home.
+
+**Why not Tailscale Funnel?** Funnel would avoid the port forwarding, but it only serves addresses
+ending in `.ts.net`, so it can't answer at `media.jevans.cloud`, which is what the website checks.
+It also caps bandwidth, which video quickly hits. Plain Tailscale (no Funnel) is still a good
+private way in for you alone, if you'd rather not open any ports.
 
 ## Everyday commands
 

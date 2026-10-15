@@ -158,6 +158,26 @@ services:
         ipv4_address: 172.30.0.10
     restart: unless-stopped
 
+  # ---- The front door: lets people outside your home reach Jellyfin, and only Jellyfin. ----
+  # Serves https://media.jevans.cloud with a free, self-renewing certificate. See README.md step 7.
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    ports:
+      - 80:80
+      - 443:443
+      - 443:443/udp
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Keep it, or Caddy has to ask for new ones on every rebuild.
+      - ${CONFIG_DIR}/caddy/data:/data
+      - ${CONFIG_DIR}/caddy/config:/config
+    networks:
+      media:
+        # Fixed so Jellyfin can be told this address is its trusted proxy.
+        ipv4_address: 172.30.0.20
+    restart: unless-stopped
+
   # ---- The dashboard: one page showing every container, with links. ----
   # Open it at http://<server-ip>:3000. Its layout lives in the homepage/ folder next to this file.
   homepage:
