@@ -197,6 +197,26 @@ services:
         ipv4_address: 172.30.0.20
     restart: unless-stopped
 
+  # ---- The ad blocker: answers "where is this website?" for every device at home. ----
+  # Ads and trackers get "nowhere", everything else gets the real answer. See README.md step 10.
+  # Setup page (first time only): http://<server-ip>:3001. Then the router hands out the server as DNS.
+  adguard:
+    image: adguard/adguardhome:latest
+    container_name: adguard
+    ports:
+      # DNS, bound to the server's home address only. Ubuntu's own resolver keeps 127.0.0.53:53, so they don't clash.
+      - ${SERVER_IP}:53:53/tcp
+      - ${SERVER_IP}:53:53/udp
+      # Its web page. 3000 inside, 3001 outside, because the dashboard already has 3000.
+      - 3001:3000/tcp
+    volumes:
+      - ${CONFIG_DIR}/adguard/work:/opt/adguardhome/work
+      - ${CONFIG_DIR}/adguard/conf:/opt/adguardhome/conf
+    networks:
+      media:
+        ipv4_address: 172.30.0.15
+    restart: unless-stopped
+
   # ---- The dashboard: one page showing every container, with links. ----
   # Open it at https://home.jevans.cloud (home only, through Caddy) or http://<server-ip>:3000.
   # Its layout lives in the homepage/ folder next to this file.
