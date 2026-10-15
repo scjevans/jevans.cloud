@@ -2,7 +2,16 @@
 title: jevans-server
 theme: dark
 color: slate
-headerStyle: clean
+headerStyle: boxed
+# Mountain vista photo from Unsplash. To use your own picture instead, paste any image link here.
+background:
+  image: https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=2560&q=80
+  blur: sm # softens the photo so the tiles stand out
+  saturate: 100
+  brightness: 60 # darkens it a little so white text stays readable
+# Frosted-glass tiles: the photo shows through, blurred.
+cardBlur: md
+hideVersion: true
 layout:
   Watch:
     style: row
