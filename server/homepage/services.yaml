@@ -55,6 +55,12 @@
         description: Downloads (inside the VPN)
         server: docker
         container: qbittorrent
+    - SABnzbd:
+        icon: sabnzbd.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:8085
+        description: Usenet downloads
+        server: docker
+        container: sabnzbd
     - Gluetun:
         icon: gluetun.png
         description: The VPN tunnel

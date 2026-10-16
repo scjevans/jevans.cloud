@@ -14,7 +14,8 @@ Think of it as a small restaurant:
 | **Prowlarr** | 9696 | Keeps your list of indexers (search sites) and shares it with Sonarr/Radarr | The supplier phone book |
 | **Seerr** | 5055 | Where people ask for a movie or show; approved asks go to Sonarr/Radarr | The order counter |
 | **Bazarr** | 6767 | Finds subtitles for what Sonarr/Radarr filed | The translator |
-| **qBittorrent** | 8080 | Does the actual downloading | The delivery van |
+| **qBittorrent** | 8080 | Does the actual downloading (torrents) | The delivery van |
+| **SABnzbd** | 8085 | Downloads from Usenet, if you add it (step 20) | The courier from a private warehouse |
 | **Gluetun** | | A VPN tunnel that qBittorrent and Prowlarr live inside | A sealed tunnel the van must drive through |
 | **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
 | **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
@@ -44,6 +45,11 @@ Everything shares one `/data` folder, on one drive:
 ├── torrents        qBittorrent downloads land here
 │   ├── movies
 │   └── tv
+├── usenet          SABnzbd downloads land here (step 20)
+│   ├── incomplete
+│   └── complete
+│       ├── movies
+│       └── tv
 └── media           your tidy library, what Jellyfin shows
     ├── movies
     └── tv
@@ -69,7 +75,7 @@ cd jevans.cloud/server
 ### 2. Make the folders
 
 ```sh
-sudo mkdir -p /data/torrents/{movies,tv} /data/media/{movies,tv} /opt/media/config
+sudo mkdir -p /data/torrents/{movies,tv} /data/usenet/incomplete /data/usenet/complete/{movies,tv} /data/media/{movies,tv} /opt/media/config
 sudo chown -R $USER:$USER /data /opt/media
 mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
 mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
@@ -865,6 +871,70 @@ It runs its first test straight away, then every hour on its own.
 
 The dashboard's **MySpeed** tile (under Home network) shows the latest download, upload and ping.
 
+### 20. Usenet (a second way to download)
+
+Torrents are like swapping at a flea market: you trade pieces with strangers, and everyone there can
+see you. Usenet is a private warehouse you pay to use. You download straight from the warehouse's
+servers and never upload to anyone. It's usually faster, and new episodes are often there sooner.
+
+It takes three pieces:
+
+| Piece | What it is | Examples |
+| ----- | ---------- | -------- |
+| **Provider** | The warehouse. Paid, roughly $3 to $10 a month | Newshosting, Eweka, Frugal Usenet |
+| **Indexer** | The catalogue that says where each file is kept. Some are free with limits | NZBGeek, DrunkenSlug, NZBFinder |
+| **SABnzbd** | The courier that fetches the files. Already in the stack | |
+
+**Does it need the VPN?** No. SABnzbd talks to the provider over SSL, so your ISP sees encrypted
+traffic going to a Usenet company and can't see what's inside. Searches still go through Prowlarr,
+inside the tunnel, so the indexer only ever sees the VPN.
+
+**a. Sign up** with one provider and one indexer. From the provider, note the **server address**,
+your **username** and **password**, and how many **connections** you're allowed. From the indexer,
+copy your **API key** (usually on your profile or API page).
+
+**b. Get the new files and start it.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+sudo mkdir -p /data/usenet/incomplete /data/usenet/complete/{movies,tv} && sudo chown -R $USER:$USER /data/usenet
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d
+```
+
+**c. Set up SABnzbd** at `http://192.168.1.95:8085`. The first-run wizard asks for your provider:
+
+1. Host: the provider's server address. Username and password: yours.
+2. Tick **SSL**, port **563**. Connections: the number your plan allows (8 to 20 is plenty).
+3. Click **Test Server**, then Next. On the folders page, put `/data/usenet/incomplete` for
+   temporary downloads and `/data/usenet/complete` for completed ones.
+
+Then, in the gear icon (Config):
+
+- **Categories:** make sure `movies` and `tv` exist, with folder `movies` and `tv`. Save.
+- **General:** copy the **API Key**. Sonarr and Radarr need it.
+
+**d. Tell Sonarr and Radarr about it.** In each: Settings → Download Clients → + → **SABnzbd**.
+Host `172.30.0.19`, Port `8080` (the inside number, not 8085), paste the API key, Category `tv`
+(Sonarr) or `movies` (Radarr). Test, then Save.
+
+**e. Add the indexer to Prowlarr** (`:9696`): Indexers → Add Indexer, search its name, paste your
+API key, Test, Save. Prowlarr passes it to Sonarr and Radarr on its own, as with your torrent sites.
+
+**f. Optional: try Usenet first.** In Sonarr and Radarr: Settings → Profiles → Delay Profiles → edit
+the default one and set Preferred Protocol to **Usenet**. They'll still use torrents when Usenet
+doesn't have something.
+
+When a download finishes, Sonarr and Radarr move it into `/data/media`. It's on the same drive, so
+the move is instant. Nobody needs to seed a Usenet file, so the copy in `usenet/complete` goes away.
+
+The dashboard's **SABnzbd** tile is under Download.
+
 ## Everyday commands
 
 ```sh
@@ -878,6 +948,9 @@ docker compose down            # stop everything (your settings and files stay)
 
 - **qBittorrent/Prowlarr won't open:** the VPN probably isn't up. `docker logs gluetun` usually says
   why, most often a mistyped key or address in `.env`.
+- **Sonarr/Radarr say they can't reach SABnzbd:** use Host `172.30.0.19` and Port `8080`. The name
+  `sabnzbd` gets "Hostname verification failed" unless you add it under SABnzbd's Config → Special →
+  host_whitelist.
 - **Can't open qBittorrent/Prowlarr from another device at home:** check `LAN_SUBNET` in `.env` matches
   your network, then `docker compose up -d` again.
 - **Grafana's top-row and "The server" charts say "No data", but the per-app ones work:** Prometheus

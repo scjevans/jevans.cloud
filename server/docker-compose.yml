@@ -127,6 +127,27 @@ services:
         ipv4_address: 172.30.0.12
     restart: unless-stopped
 
+  # The Usenet downloader. Fetches files from your paid Usenet provider over an encrypted (SSL) line.
+  # Outside the VPN on purpose: SSL already hides what you download from your ISP, and you never upload
+  # to anyone, so there's no swarm to see your address. Skipping the tunnel keeps it at full speed.
+  # Home only, no Caddy site: http://<server-ip>:8085. See README.md step 20.
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    environment:
+      <<: *common-env
+    ports:
+      # 8080 inside, 8085 outside: qBittorrent already has 8080.
+      - 8085:8080
+    volumes:
+      - ${CONFIG_DIR}/sabnzbd:/config
+      - ${DATA_DIR}:/data
+    networks:
+      media:
+        # Sonarr and Radarr reach it by this address (README.md step 20).
+        ipv4_address: 172.30.0.19
+    restart: unless-stopped
+
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
