@@ -986,6 +986,72 @@ the move is instant. Nobody needs to seed a Usenet file, so the copy in `usenet/
 
 The dashboard's **SABnzbd** tile is under Download.
 
+### 21. Netflix-style rows (Action, Comedy, Oscar winners)
+
+Out of the box, Jellyfin's home page is like a video shop with one shelf per library: "Latest Movies",
+"Latest Shows". These steps add themed shelves you scroll sideways, like Netflix: a row per genre,
+"Because you watched...", hidden gems, and an Oscar winners row.
+
+Two plugins do it, both installed from Jellyfin's plugin store like steps 12 to 14:
+
+- **Home Screen Sections** rebuilds the home page out of rows you pick. Its **Genre** row picks a
+  handful of genres (Action, Comedy, Thriller...) weighted towards what each person watches, so a
+  comedy fan sees more comedy shelves. It reads genres that Jellyfin already downloaded for every film,
+  so there's nothing to tag by hand.
+- **Jellyfin Oscars** looks up every film's Oscar history and keeps an **Oscar Winners** collection
+  up to date. Jellyfin doesn't store awards on its own, which is why this one is needed.
+
+**a. Install Home Screen Sections.** It lives in the same store as File Transformation and Media Bar
+(step 12a). Dashboard → Plugins → Catalog → install **Plugin Pages**, then **Home Screen Sections**
+(it needs Plugin Pages and File Transformation), then:
+
+```sh
+docker restart jellyfin
+```
+
+**b. Pick your rows.** On the home page, open the menu (☰ top left) → **Modular Home**. Click the
+button at the top to turn it on, then tick the rows you want. A good Netflix-like set:
+
+| Row | What it shows |
+| --- | ------------- |
+| Continue Watching, Next Up | Same as now |
+| Genre | Several rows, one per genre, e.g. "Action Movies", "Comedy Movies" |
+| Because You Watched | Films like one you just finished |
+| Hidden Gems | Rated 7.5 or higher, not watched yet |
+| Decade | "Best of the 1990s" style row |
+| Collections | Your collections, including Oscar Winners once step c is done |
+| Discover, My Requests | Things from Seerr you don't have yet, with a request button |
+
+Save (it doesn't say it saved), then refresh with Ctrl+Shift+R. Each person picks their own rows the
+same way. Discover and My Requests use Seerr: if they're empty, Dashboard → Plugins → **Home Screen
+Sections** and enter `http://seerr:5055` with Seerr's API key.
+
+**c. Add the Oscar winners.** Get a free API key from [omdbapi.com](https://www.omdbapi.com/apikey.aspx)
+(it's emailed to you; click the link in the email to switch it on). Then:
+
+1. Dashboard → Plugins → **Repositories** → **+**, name `Jellyfin Oscars`, URL
+   `https://raw.githubusercontent.com/FizzyMUC/jellyfin-oscars-plugin/main/manifest.json`.
+2. Catalog → **Jellyfin Oscars** → Install, then `docker restart jellyfin`.
+3. Dashboard → Plugins → **Jellyfin Oscars**: paste the OMDb key, turn on enrichment, tick the
+   **Oscar Winners** collection (and Nominees if you want a second row), Save.
+4. Run its scan from the same page (or Dashboard → **Scheduled Tasks**). The first run checks every
+   film, so give it a while. The free key allows 1,000 lookups a day; with a bigger library it
+   finishes over a few days on its own.
+
+The collection then shows up under Movies → **Collections**, and in the Collections row from step b.
+
+**Good to know:**
+
+- The rows are part of Jellyfin's web page, so they show in a browser, the desktop app and the
+  phone apps. TV apps that draw their own screens (Roku, Android TV, Apple TV's Swiftfin) keep the
+  normal home page.
+- The plugins are built for one exact Jellyfin version. If one disappears from the catalog after a
+  Jellyfin update, its new build isn't out yet; it comes back within days or weeks.
+- Want a row that's always there, like "Action" every day instead of the rotating Genre rows?
+  Make it a collection (Movies → select films → ⋮ → Add to collection) and it joins the Collections
+  row. The separate "Collection Sections" plugin, which gives each collection a row of its own, isn't
+  out for Jellyfin 12 yet.
+
 ## Everyday commands
 
 ```sh
