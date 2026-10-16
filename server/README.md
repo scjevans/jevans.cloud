@@ -871,6 +871,57 @@ It runs its first test straight away, then every hour on its own.
 
 The dashboard's **MySpeed** tile (under Home network) shows the latest download, upload and ping.
 
+### 19. Keep films and shows in English
+
+Prowlarr is only the phone book: it asks every indexer "who has this film?" and passes back every
+answer, Italian dubs included. Sonarr and Radarr are the ones that pick which answer to download, and
+out of the box they judge only on picture quality, not on language. So an Italian copy (`ITA`) or a
+dual-audio one (`MULTi`) that happens to be the best quality wins. A dual-audio file then plays
+Italian because Italian is marked as its default track, and Jellyfin plays the default track unless
+you tell it which language you want.
+
+**a. Make Jellyfin pick the English track** (fixes files you already have that contain English)
+
+Each person does this in their own account, on the web or in an app:
+1. Profile picture (top right) → **Settings** → **Playback**.
+2. **Preferred audio language**: English.
+3. Untick **Play default audio track regardless of language**, then **Save**.
+
+**b. Make Radarr turn down non-English downloads**
+
+1. Settings → **Custom Formats** → **+** → name it `Not English`.
+2. **+** under Conditions → **Language** → Language `English`, tick **Negate**, Save. Save again.
+   ("Negate" flips it: the label goes on any release that is *not* English.)
+3. Settings → **Profiles** → open each quality profile you use:
+   - In the custom formats list at the bottom, give `Not English` a score of `-10000`.
+   - **Minimum Custom Format Score**: `0`. Anything wearing the `Not English` label now scores
+     below zero and is skipped, like a shop that won't take a delivery with the wrong label.
+   - **Language**: English. Tick **Upgrades Allowed**, then Save.
+
+Dual-audio releases that include English still get through, which is fine: step a makes them play
+in English.
+
+**c. Same for Sonarr**
+
+Repeat b in Sonarr. Its profiles have no Language box, so skip that line; the custom format does
+the job on its own.
+
+**d. Swap out the Italian copies you already have**
+
+In Radarr: **Wanted** → **Cutoff Unmet** → **Search All**. The Italian-only films now score below
+your profile's target, so Radarr looks for an English copy and replaces them. In Sonarr, open the
+show, check the episode's language on the **Files** tab, and press the search (magnifier) button on
+any Italian ones. If one still won't upgrade, delete that file and search again.
+
+**e. Check the phone book**
+
+In Prowlarr's **Indexers** list, look at the language column. If a site is Italian (or any language
+you don't want), delete it there; it only ever offers Italian releases.
+
+Watching a foreign film in its own language with subtitles? This setup blocks those too. For a
+one-off, open the film in Radarr, pick **Interactive Search** (the person icon), and grab the release
+yourself; a manual pick ignores the score.
+
 ### 20. Usenet (a second way to download)
 
 Torrents are like swapping at a flea market: you trade pieces with strangers, and everyone there can
