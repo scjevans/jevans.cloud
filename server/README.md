@@ -531,6 +531,69 @@ episodes. A season needs at least two episodes before it can find the shared the
 **Playback** → *Media segment actions*, set **Intro** to *Ask to skip* (shows the button) or *Skip*
 (skips by itself). Jellyfin Enhanced's auto-skip (step 12) uses the same markers.
 
+### 14. Media Bar (a big slideshow on the home page)
+
+[Media Bar](https://github.com/IAmParadox27/jellyfin-plugin-media-bar) turns the top of Jellyfin's home
+page into a rotating banner, like the one on Netflix: full-width artwork, the title's logo, a short
+description and a Play button, with trailers if you want them.
+
+It comes from the same plugin store as File Transformation (step 12a), and it needs File Transformation
+to add itself to the page, so do step 12a and 12b first. Use Media Bar 3.x for Jellyfin 12; the
+catalog offers the build that matches your Jellyfin.
+
+**a. Install it.** Dashboard → Plugins → Catalog → **Media Bar** → Install, then:
+
+```sh
+docker restart jellyfin
+```
+
+**b. Refresh.** Open Jellyfin's home page and press Ctrl+Shift+R (twice if needed). The bar shows at the
+top. Ignore the guide's step about editing `index.html`: File Transformation does that part for you.
+
+**c. Pick what it shows.** Click the gear on the bar to choose libraries, trailers and timing. These
+choices are saved in each browser, so each person and device sets their own.
+
+To turn trailers off for everyone, Dashboard → Plugins → **Media Bar** → untick **Enable Trailers?** →
+**Save**. That server setting wins over the gear, so trailers stay off even for someone who switches them
+back on there.
+
+**Bar doesn't appear?** Open the browser's developer tools (F12) → **Network** → tick **Disable cache**,
+then refresh with the tools still open. If Media Bar isn't in the catalog at all, it hasn't caught up to
+your Jellyfin version yet; check again after its next release.
+
+### 15. Abyss theme (a new look for Jellyfin)
+
+[Abyss](https://github.com/AumGupta/abyss-jellyfin) is a theme: a dark, glassy, rounded look. It's just
+CSS, the styling rules that decide colours and shapes, like a new coat of paint that leaves the house's
+walls alone. Jellyfin loads it from the internet each time a page opens, so there's nothing to install
+on the server, and deleting the lines puts the old look straight back.
+
+**a. Paste the theme.** Dashboard → **Branding** → **Custom CSS**, paste these lines, then **Save**:
+
+```css
+@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/abyss.css');
+@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/styles/abyss-je.css');
+@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/styles/abyss-mbe.css');
+```
+
+The first line is the theme. The other two restyle Jellyfin Enhanced (step 12) and the Media Bar (step
+14) to match. The Media Bar one was written for a sister version of the plugin, so if the bar looks
+worse with it, delete that line.
+
+**b. Use the dark base.** Your profile → **Display** → Theme: **Dark**, and tick **Show backdrops**.
+Abyss is built on top of the dark theme. Then refresh with Ctrl+F5.
+
+**Optional extras**, pasted below the lines above:
+
+- A lighter version for phones and TVs (less blur and animation):
+  `@import url('https://cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/styles/abyss-lite.css');`
+- A different accent colour, for example soft blue (the same colour written two ways, both are needed):
+  `:root { --abyss-accent: 100, 160, 255; --abyss-accent-channel: 100 160 255; }`
+
+Skip the theme's "Spotlight" add-on and its installer. Spotlight is its own home-page slideshow, which
+Media Bar already does, and it works by editing files inside the Jellyfin container that are replaced
+on every update.
+
 ### 16. Server health charts (Grafana)
 
 Homepage tells you whether each app is running. Grafana tells you *how the server is doing*, and how it
