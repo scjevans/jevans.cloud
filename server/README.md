@@ -22,6 +22,7 @@ Think of it as a small restaurant:
 | **Jellystat** | 3002 | Keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
 | **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
+| **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
 
 ### Why the tunnel matters
 
@@ -757,6 +758,50 @@ after the import and every so often after that (or ask me to set up a nightly on
 safety net, the web vault's **Tools** → **Export vault** → **.json (Encrypted)** makes a password-locked
 copy you could import into any Bitwarden.
 
+### 18. Internet speed history (MySpeed)
+
+Your provider promises a speed. MySpeed checks whether you get it: every hour it runs a speed test
+(download, upload and ping) and writes the result down, like a bathroom scale that weighs you on a
+timer. After a few days you can see the pattern: whether evenings are slower, or a bad day was the line
+and not Jellyfin. It's home only, at `http://192.168.1.95:5216`.
+
+It runs **outside** the VPN on purpose. Speed-testing through the tunnel would measure Mullvad's server
+in another city, not your Fios line. A speed test is ordinary traffic your ISP sees every day from
+millions of homes, so it gives nothing away.
+
+**a. Get the new files and start it.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d
+```
+
+```sh
+docker compose ps myspeed
+```
+
+It should say `Up` (or `running`).
+
+**b. Open it.** Go to `http://192.168.1.95:5216`. The first time, it asks a few questions:
+
+1. **Which speed test to use.** Pick **Ookla** (the speedtest.net one) and accept its terms. That's the
+   same test your ISP and most people use, so the numbers compare fairly.
+2. **Which server.** Leave it on automatic: it picks a nearby one.
+
+It runs its first test straight away, then every hour on its own.
+
+**c. Optional tweaks** (the gear icon top right):
+
+- **How often:** each test uses your full speed for about 20 seconds. Hourly is fine on Fios (no data
+  cap), but if a test ever makes a film stutter, change the frequency to every 3 or 6 hours.
+- **Password:** you can skip it, since only devices at home can open the page. If you set one, the
+  numbers on the dashboard tile stop showing until the password is added there too (ask me).
+
+The dashboard's **MySpeed** tile (under Home network) shows the latest download, upload and ping.
+
 ## Everyday commands
 
 ```sh
@@ -793,6 +838,10 @@ docker compose down            # stop everything (your settings and files stay)
 - **Vaultwarden keeps restarting with "permission denied" or "read-only file system":** its folder
   belongs to root. `sudo chown -R $USER:$USER /opt/media/config/vaultwarden`, then
   `docker compose up -d vaultwarden`.
+- **MySpeed tests fail or show far below your plan:** check `docker logs myspeed`. If every test
+  fails, AdGuard may be blocking the speed test site: in AdGuard (`http://192.168.1.95:3001`) open
+  **Query log**, search `speedtest`, and click **Unblock** on any red line. One slow result is normal;
+  a slow pattern at the same hour usually means someone is busy downloading then.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).

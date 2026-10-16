@@ -85,3 +85,12 @@
         description: Your passwords (home only)
         server: docker
         container: vaultwarden
+    - MySpeed:
+        icon: myspeed.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:5216
+        description: Home internet speed, tested every hour
+        server: docker
+        container: myspeed
+        widget:
+          type: myspeed
+          url: http://myspeed:5216
