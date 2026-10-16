@@ -16,6 +16,8 @@ networks:
   # Jellystat and its database talk on a private line. The database has no internet and no door to your network.
   jellystat:
     internal: true
+  # Grafana, Prometheus and cAdvisor talk here. Only Grafana has a door to your network.
+  monitoring:
 
 x-common-env: &common-env
   PUID: ${PUID}
@@ -161,6 +163,18 @@ services:
         ipv4_address: 172.30.0.10
     restart: unless-stopped
 
+  # Lets Jellyfin apps at home find the server on their own. Apps shout "any Jellyfin here?" to the
+  # whole network on UDP port 7359; that shout can't get inside Docker's private network, so this
+  # sits on the server's real network, hears it, and passes it to Jellyfin, then carries the answer back.
+  jellyfin-discovery:
+    image: alpine/socat:latest
+    container_name: jellyfin-discovery
+    command: UDP4-RECVFROM:7359,broadcast,fork UDP4-SENDTO:172.30.0.10:7359
+    network_mode: host
+    depends_on:
+      - jellyfin
+    restart: unless-stopped
+
   # Lets people ask for a movie or show. Approved requests go straight to Sonarr/Radarr.
   # At home: http://<server-ip>:5055. Away: https://requests.jevans.cloud, through Caddy (README.md step 8).
   seerr:
@@ -252,6 +266,9 @@ services:
   adguard:
     image: adguard/adguardhome:latest
     container_name: adguard
+    environment:
+      # Without this it runs on UTC, so the query log and stats show the wrong hours.
+      TZ: ${TZ}
     ports:
       # DNS, bound to the server's home address only. Ubuntu's own resolver keeps 127.0.0.53:53, so they don't clash.
       - ${SERVER_IP}:53:53/tcp
@@ -264,6 +281,67 @@ services:
     networks:
       media:
         ipv4_address: 172.30.0.15
+    restart: unless-stopped
+
+  # ---- The speed check: MySpeed tests your home internet on a timer and keeps the results. ----
+  # Like a bathroom scale that weighs you every hour and writes it down, so you can see the trend.
+  # Outside the VPN on purpose: it should measure your real Fios line, not the tunnel.
+  # Home only, no Caddy site: http://<server-ip>:5216. See README.md step 18.
+  myspeed:
+    image: germannewsmaker/myspeed:latest
+    container_name: myspeed
+    environment:
+      TZ: ${TZ}
+    ports:
+      - 5216:5216
+    volumes:
+      # Every test result lives here.
+      - ${CONFIG_DIR}/myspeed:/myspeed/data
+    networks:
+      media:
+        # So the dashboard can show the latest result on its tile.
+        ipv4_address: 172.30.0.18
+    restart: unless-stopped
+
+  # ---- The password safe: Vaultwarden, a home-made Bitwarden server. ----
+  # The official Bitwarden apps and browser extensions talk to it as if it were Bitwarden's own cloud.
+  # No port on your network: the apps insist on HTTPS, so the only way in is
+  # https://vault.jevans.cloud through Caddy, and Caddy only lets in devices at home. See README.md step 17.
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    # Locked down: runs as you instead of the all-powerful root user, can't gain extra powers,
+    # and can't change any of its own files. The only place it can write is its vault folder.
+    user: ${PUID}:${PGID}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      TZ: ${TZ}
+      DOMAIN: https://vault.jevans.cloud
+      # Listen on 8080 inside the box: ports below 1024 need root, and it no longer runs as root.
+      ROCKET_PORT: 8080
+      # Off once your account exists. README.md step 17 turns it on for one minute to make it.
+      SIGNUPS_ALLOWED: ${VAULTWARDEN_SIGNUPS_ALLOWED}
+      # The settings page at https://vault.jevans.cloud/admin. Its password is stored scrambled (a hash), never in plain text.
+      # Leave it blank and the page is switched off entirely (README.md step 17e).
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN}
+      # Hide "Forgot password? Get a hint", which would otherwise show your hint to anyone who types your email.
+      SHOW_PASSWORD_HINT: "false"
+      # Don't fetch each saved website's little logo. Fetching them would tell your ISP
+      # (and every one of those sites) which accounts you keep. Items show a plain globe instead.
+      DISABLE_ICON_DOWNLOAD: "true"
+    volumes:
+      # Your whole vault lives here (scrambled with your master password). Back this folder up.
+      - ${CONFIG_DIR}/vaultwarden:/data
+    networks:
+      media:
+        # So Caddy can reach it.
+        ipv4_address: 172.30.0.17
     restart: unless-stopped
 
   # ---- The dashboard: one page showing every container, with links. ----
@@ -306,4 +384,92 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - dashboard
+    restart: unless-stopped
+
+  # ---- Server health: charts of CPU, memory, drives, temperatures and each app's use. ----
+  # Like a car's dashboard: cAdvisor and node-exporter are the sensors, Prometheus is the logbook
+  # that writes their readings down every 30 seconds, Grafana draws the gauges. See README.md step 16.
+  # Home only, no Caddy site: http://<server-ip>:3003.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    # Runs as you, so its folder in CONFIG_DIR needs no special owner.
+    user: ${PUID}:${PGID}
+    depends_on:
+      - prometheus
+    environment:
+      TZ: ${TZ}
+      GF_SECURITY_ADMIN_USER: admin
+      # Only used the very first time. After that, change the password inside Grafana.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # Open straight onto the server dashboard.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/server.json
+    ports:
+      # 3000 inside, 3003 outside: the dashboard, AdGuard and Jellystat have 3000 to 3002.
+      - 3003:3000
+    volumes:
+      - ${CONFIG_DIR}/grafana:/var/lib/grafana
+      # The Prometheus connection and the ready-made dashboard, from the grafana/ folder next to this file.
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # The logbook. Keeps 30 days of readings, then forgets the oldest. No port on your network.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    user: ${PUID}:${PGID}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    extra_hosts:
+      # So it can reach node-exporter, which lives on the server's own network.
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${CONFIG_DIR}/prometheus:/prometheus
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # Sensor for the server itself: CPU, memory, drives, temperatures, network.
+  # Uses the server's own network so it sees the real network card, on port 9100 (read-only numbers).
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    command:
+      - --path.rootfs=/host
+    network_mode: host
+    pid: host
+    volumes:
+      # The whole server, read-only, so it can measure every drive (including /data).
+      - /:/host:ro,rslave
+    restart: unless-stopped
+
+  # Sensor for the containers: how much each app uses. It has to look at Docker and the kernel
+  # directly, so it gets wide read access; it has no port on your network.
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring
     restart: unless-stopped

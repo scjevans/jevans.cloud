@@ -20,6 +20,9 @@ Think of it as a small restaurant:
 | **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 | **Jellystat** | 3002 | Keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
+| **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
+| **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
+| **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
 
 ### Why the tunnel matters
 
@@ -69,6 +72,7 @@ cd jevans.cloud/server
 sudo mkdir -p /data/torrents/{movies,tv} /data/media/{movies,tv} /opt/media/config
 sudo chown -R $USER:$USER /data /opt/media
 mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
+mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
 ```
 
 Seerr always runs as user 1000 inside its container, so its folder belongs to 1000 whatever your own ID is.
@@ -346,6 +350,7 @@ project.
 | `media.jevans.cloud` | `192.168.1.95` |
 | `requests.jevans.cloud` | `192.168.1.95` |
 | `home.jevans.cloud` | `192.168.1.95` |
+| `vault.jevans.cloud` | `192.168.1.95` |
 
 The Fios router can't loop your public address back inside, which is why you needed hosts-file lines
 and `:8096` addresses at home. With these rewrites, the phone book just gives home devices the
@@ -589,6 +594,277 @@ Skip the theme's "Spotlight" add-on and its installer. Spotlight is its own home
 Media Bar already does, and it works by editing files inside the Jellyfin container that are replaced
 on every update.
 
+### 16. Server health charts (Grafana)
+
+Homepage tells you whether each app is running. Grafana tells you *how the server is doing*, and how it
+was doing last Tuesday at 9pm. Think of a car: the engine has sensors, a logbook writes down what they
+read every 30 seconds, and the dashboard turns the logbook into gauges and charts. Here that's four
+containers:
+
+| Container | Car part | What it does |
+| --------- | -------- | ------------ |
+| `node-exporter` | Engine sensors | Reads the PC itself: CPU, memory, how full each drive is, temperatures, network |
+| `cadvisor` | Sensors on each passenger | Reads every container: how much CPU, memory and network each app uses |
+| `prometheus` | The logbook | Asks both sensors for their numbers every 30 seconds and keeps 30 days of them |
+| `grafana` | The dashboard | Draws the charts. The only one you open: `http://192.168.1.95:3003` |
+
+It's home only, like Jellystat: no Caddy site and no port forwarding, so nobody outside the house can
+see it. Grafana comes already plugged into Prometheus, with a ready-made **Media server** dashboard (it's
+in `grafana/dashboards/server.json`), so there's nothing to wire up.
+
+**a. Get the new files.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+**b. Make its folders.** Grafana and Prometheus run as you, so they need folders you own. If Docker made
+them instead, they'd belong to root and the two apps couldn't save anything.
+
+```sh
+mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
+```
+
+**c. Make a password.** This adds a random password for Grafana's `admin` login to your `.env`. Run it once:
+
+```sh
+echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 12)" >> ~/jevans.cloud/server/.env
+```
+
+Then show it, so you can copy it for the first login:
+
+```sh
+grep GRAFANA ~/jevans.cloud/server/.env
+```
+
+**d. Start it.**
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d
+```
+
+```sh
+docker compose ps grafana prometheus node-exporter cadvisor
+```
+
+All four should say `Up` (or `running`).
+
+**e. Open it.** Go to `http://192.168.1.95:3003`, log in as `admin` with the password from step c. It
+opens on the **Media server** dashboard. Give it a few minutes: charts need a few readings before they
+draw a line. What's on it:
+
+- **Top row:** CPU, memory, both drives, the hottest temperature sensor, and how long since the last
+  restart. Green is fine, orange means keep an eye on it, red means look now.
+- **The server:** CPU and memory over time, network traffic, drive activity (`sda` is the system SSD,
+  `sdb` the media drive), and free space.
+- **The apps:** CPU, memory, download and upload per container. Downloads show up under `gluetun`,
+  because qBittorrent borrows its connection. Jellyfin's upload going up means someone is streaming.
+
+Change the time range top right (Last 6 hours, Last 7 days...). Click a name under a chart to show
+just that app.
+
+**Want more detail?** Grafana's community shares dashboards you can add in a few clicks. The most
+popular one for the server itself is **Node Exporter Full**: Dashboards → **New** → **Import**, type
+`1860`, **Load**, pick **Prometheus** at the bottom, **Import**. It has a page for nearly every number
+the server reports.
+
+The **Media server** dashboard comes from the repo, so changes you make to it in the browser are
+replaced the next time Grafana restarts. To build your own, use **New** → **New dashboard**, or on
+the Media server dashboard use **Save as** to make your own copy.
+
+### 17. Your own password safe (Vaultwarden)
+
+**What it is.** Bitwarden is a password manager, like LastPass. It comes in two halves: the **apps**
+(browser extension, phone app, desktop app) and the **server** that keeps your vault and keeps every
+device in sync. Vaultwarden is a home-made copy of that server half. The official Bitwarden apps
+can't tell the difference, so you get Bitwarden's polished apps with your passwords living in your
+house instead of someone else's data centre.
+
+Think of it like a bank's safe-deposit box, except the box is in your own back office and only you
+have the key. The key is your **master password**: your vault is scrambled with it *on your device*
+before it is ever sent, so the server only ever stores scrambled data. Even someone who stole the
+server's drive couldn't read your passwords without it.
+
+**Where it can be reached.** Home only, like the dashboard: `https://vault.jevans.cloud`. Caddy hangs
+up on anyone who isn't on your home network, and Vaultwarden has no port of its own. When you're out,
+the apps still show every password (they keep a scrambled copy on the device and open it with your
+master password); they just can't save new ones or sync until you're home again. If you later want
+full syncing away from home, ask: Tailscale (a private tunnel only your own devices can use) is the
+safe way to do that. Opening a password safe to the whole internet isn't.
+
+**How it's locked down.** Layers, like a bank: the vault is home-only, the box it runs in is locked
+(it runs as you rather than as the all-powerful `root` user, can't change its own files, and can only
+write to its vault folder), sign-ups are closed, the admin page is switched off when you're not using
+it, password hints are hidden, and it doesn't fetch website logos (which would tell your ISP which
+sites you have accounts with). On your account you add two-step login and the stronger Argon2id
+password scrambling. Your master password is the last and most important layer.
+
+**a. DNS.** One more record next to `home`, same value, for the same reason (so Caddy can get the
+HTTPS padlock; the Bitwarden apps refuse to connect without it):
+
+| Type | Name | Value | TTL |
+| ---- | ---- | ----- | --- |
+| `A` | `vault` | your home's public IP | 5 min (or the lowest offered) |
+
+Then in AdGuard (`http://192.168.1.95:3001`): Filters → DNS rewrites → Add `vault.jevans.cloud` →
+`192.168.1.95`, so every device at home, phones included, finds it. On your PC, if it uses the hosts file
+rather than AdGuard, add `192.168.1.95  vault.jevans.cloud` there too (see step 9c).
+
+**b. Make the admin password.** Vaultwarden has a settings page at `/admin`. Its password is stored
+*scrambled* (a "hash"), so even someone reading your `.env` can't learn it. Run this, type a new
+password twice (it's for the settings page only, **not** your master password; save it in your password
+manager later):
+
+```sh
+cd ~/jevans.cloud && git pull
+docker run --rm -it vaultwarden/server /vaultwarden hash
+```
+
+It prints a line starting `ADMIN_TOKEN='$argon2id$...`. Open `.env` (`nano ~/jevans.cloud/server/.env`)
+and add these two lines at the bottom, pasting everything from the first `'` to the last `'` after the
+`=` on the second line:
+
+```
+VAULTWARDEN_SIGNUPS_ALLOWED=true
+VAULTWARDEN_ADMIN_TOKEN='$argon2id$v=19$m=65540,t=3,p=4$...the rest of the line...'
+```
+
+Keep the single quotes: without them Docker reads every `$` as the start of a setting name and mangles it.
+
+**c. Start it and make your account.** First give it a folder you own (it runs as you, not root; the
+`chown` also fixes the folder if Docker already made it as root):
+
+```sh
+mkdir -p /opt/media/config/vaultwarden && sudo chown -R $USER:$USER /opt/media/config/vaultwarden
+cd ~/jevans.cloud/server && docker compose up -d && docker restart caddy
+docker logs vaultwarden 2>&1 | tail -5
+```
+
+Open `https://vault.jevans.cloud` on your PC → **Create account**. Pick a **master password** you've
+never used anywhere: a few random words strung together (`maple-orbit-cactus-lantern`) is strong and
+memorable. Write it down on paper and keep it somewhere safe at home. **Nobody can reset it**, not
+you, not me, not the admin page. Lose it and the vault is gone for good.
+
+**d. Close the sign-up door.** Now that your account exists, stop anyone else making one. In `.env`
+change `VAULTWARDEN_SIGNUPS_ALLOWED=true` to `false`, then:
+
+```sh
+docker compose up -d vaultwarden
+```
+
+**e. Switch the admin page off.** You don't need it day to day, and a page that doesn't exist can't
+be broken into. In `.env`, empty the token line so it reads just `VAULTWARDEN_ADMIN_TOKEN=`, then
+`docker compose up -d vaultwarden`. `https://vault.jevans.cloud/admin` now says the page is disabled.
+Want to give someone in the house their own vault later? Run step b again to put a token back, use
+`/admin` → Users → **Invite User**, then empty the line again. You never need to reopen sign-ups.
+
+**f. Lock your account down.** In the web vault, click your avatar (top right) → **Account settings**
+→ **Security**:
+
+- **Two-step login** → **Authenticator app**. Scan the code with an authenticator app on your phone
+  (Aegis, 2FAS, Google or Microsoft Authenticator). Now a stolen master password alone isn't enough.
+  Save the **recovery code** it shows on the same paper as your master password. If you own a hardware
+  key like a YubiKey, add it here too under **Passkey / FIDO2 WebAuthn**: it's the strongest option.
+- **Keys** → **KDF algorithm**: change it to **Argon2id** (keep the suggested numbers) and save. This
+  is how hard your master password is to guess-and-check if someone ever got a copy of the vault:
+  Argon2id makes every guess cost a lot of memory as well as time, which cripples password-cracking
+  hardware. It signs you out; sign back in.
+
+**g. Bring your passwords over from LastPass.**
+
+> ⚠️ The file LastPass gives you is every password you own **in plain, readable text**. Treat it
+> like cash left on the table. Never email it, never upload it, never paste it into a chat (including
+> this one), and never put it in this repo. Do this on your own PC and delete the file as soon as the
+> import is done.
+
+1. Sign in at [lastpass.com](https://lastpass.com) → **Advanced Options** (bottom left) → **Export**.
+   It asks for your LastPass master password, and it may email you to confirm first: click the link,
+   then Export again. It downloads `lastpass_export.csv`.
+2. In your new vault at `https://vault.jevans.cloud`: **Tools** → **Import data**. File format:
+   **LastPass (csv)**. Choose the file, click **Import data**.
+3. Check it: the count should roughly match LastPass, and LastPass folders become Bitwarden folders.
+   Open a few logins and secure notes and make sure they're right.
+4. **Delete the CSV** from your Downloads folder, then empty the Recycle Bin.
+
+What doesn't come across: file attachments (download any from LastPass by hand and add them to the
+items) and sharing with other people. Keep your LastPass account for a few weeks until you're sure
+nothing is missing, then close it.
+
+**h. Connect the Bitwarden apps.** Install the official Bitwarden extension in your browser and the
+Bitwarden app on your phone. On the sign-in screen, before typing anything:
+
+- Find **Logging in on: bitwarden.com** (or **Accessing**) and change it to **self-hosted**.
+- **Server URL:** `https://vault.jevans.cloud`. Save.
+- Sign in with your email and master password.
+
+Phone at home with Wi-Fi on: it works because AdGuard points the name at the server. Then turn off
+LastPass's autofill (disable or remove its extension) so the two don't fight over the same login boxes.
+
+In each app's **Settings** → **Account security**: set **Vault timeout** to 15 minutes (or *On system
+lock* on the PC) and **Timeout action** to **Lock**. On the phone, turn on **Unlock with biometrics**
+so locking often isn't a chore. A locked app is a closed safe even if someone picks up your device.
+
+**i. Back it up.** Your whole vault is one folder: `/opt/media/config/vaultwarden`. If that drive died
+without a copy, so would every password. This makes a dated copy, pausing the safe for a few seconds so
+the copy isn't caught mid-write:
+
+```sh
+cd ~/jevans.cloud/server && docker compose stop vaultwarden
+sudo tar czf ~/vaultwarden-$(date +%F).tar.gz -C /opt/media/config vaultwarden
+docker compose start vaultwarden
+```
+
+Then copy that file **off the server** (a USB stick, your PC): a backup on the same machine dies with
+it. Everything in it is still scrambled with your master password, so a strong master password keeps it
+safe; still keep the stick somewhere private, like you would a spare house key. Do it
+after the import and every so often after that (or ask me to set up a nightly one). As an extra
+safety net, the web vault's **Tools** → **Export vault** → **.json (Encrypted)** makes a password-locked
+copy you could import into any Bitwarden.
+
+### 18. Internet speed history (MySpeed)
+
+Your provider promises a speed. MySpeed checks whether you get it: every hour it runs a speed test
+(download, upload and ping) and writes the result down, like a bathroom scale that weighs you on a
+timer. After a few days you can see the pattern: whether evenings are slower, or a bad day was the line
+and not Jellyfin. It's home only, at `http://192.168.1.95:5216`.
+
+It runs **outside** the VPN on purpose. Speed-testing through the tunnel would measure Mullvad's server
+in another city, not your Fios line. A speed test is ordinary traffic your ISP sees every day from
+millions of homes, so it gives nothing away.
+
+**a. Get the new files and start it.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d
+```
+
+```sh
+docker compose ps myspeed
+```
+
+It should say `Up` (or `running`).
+
+**b. Open it.** Go to `http://192.168.1.95:5216`. The first time, it asks a few questions:
+
+1. **Which speed test to use.** Pick **Ookla** (the speedtest.net one) and accept its terms. That's the
+   same test your ISP and most people use, so the numbers compare fairly.
+2. **Which server.** Leave it on automatic: it picks a nearby one.
+
+It runs its first test straight away, then every hour on its own.
+
+**c. Optional tweaks** (the gear icon top right):
+
+- **How often:** each test uses your full speed for about 20 seconds. Hourly is fine on Fios (no data
+  cap), but if a test ever makes a film stutter, change the frequency to every 3 or 6 hours.
+- **Password:** you can skip it, since only devices at home can open the page. If you set one, the
+  numbers on the dashboard tile stop showing until the password is added there too (ask me).
+
+The dashboard's **MySpeed** tile (under Home network) shows the latest download, upload and ping.
+
 ## Everyday commands
 
 ```sh
@@ -604,6 +880,31 @@ docker compose down            # stop everything (your settings and files stay)
   why, most often a mistyped key or address in `.env`.
 - **Can't open qBittorrent/Prowlarr from another device at home:** check `LAN_SUBNET` in `.env` matches
   your network, then `docker compose up -d` again.
+- **Grafana's top-row and "The server" charts say "No data", but the per-app ones work:** Prometheus
+  can't reach node-exporter. Run `sudo ufw status`: if it says `active`, let containers in with
+  `sudo ufw allow from 172.16.0.0/12 to any port 9100`.
+- **Grafana or Prometheus keeps restarting with "permission denied":** their folder belongs to root.
+  `sudo chown -R $USER:$USER /opt/media/config/grafana /opt/media/config/prometheus`, then
+  `docker compose up -d`.
+- **Jellyfin apps at home don't list the server on their own:** check the finder is running with
+  `docker logs jellyfin-discovery`, and `sudo ufw allow 7359/udp` if `sudo ufw status` says `active`.
+  The server they find is `https://media.jevans.cloud`, which works at home thanks to AdGuard's DNS
+  rewrites (step 10d). You can always type `http://192.168.1.95:8096` in the app instead.
+- **Bitwarden app says it can't reach the server, or a certificate error:** check you're on home
+  Wi-Fi, that the app's server URL is exactly `https://vault.jevans.cloud`, and that
+  `nslookup vault.jevans.cloud 192.168.1.95` answers `192.168.1.95` (step 17a's DNS rewrite). If the
+  browser shows `SSL_ERROR_INTERNAL_ERROR_ALERT`, Caddy has no certificate yet: the `vault` DNS record
+  is missing, or Caddy needs `docker restart caddy`.
+- **The admin page says "Invalid admin token":** you're typing the password you chose in step 17b,
+  not the long `$argon2id...` line. If it never works, the `.env` line probably lost its single quotes.
+  If it says the page is disabled, that's step 17e working: put a token back first.
+- **Vaultwarden keeps restarting with "permission denied" or "read-only file system":** its folder
+  belongs to root. `sudo chown -R $USER:$USER /opt/media/config/vaultwarden`, then
+  `docker compose up -d vaultwarden`.
+- **MySpeed tests fail or show far below your plan:** check `docker logs myspeed`. If every test
+  fails, AdGuard may be blocking the speed test site: in AdGuard (`http://192.168.1.95:3001`) open
+  **Query log**, search `speedtest`, and click **Unblock** on any red line. One slow result is normal;
+  a slow pattern at the same hour usually means someone is busy downloading then.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).
