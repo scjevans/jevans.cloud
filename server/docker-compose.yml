@@ -283,6 +283,26 @@ services:
         ipv4_address: 172.30.0.15
     restart: unless-stopped
 
+  # ---- The speed check: MySpeed tests your home internet on a timer and keeps the results. ----
+  # Like a bathroom scale that weighs you every hour and writes it down, so you can see the trend.
+  # Outside the VPN on purpose: it should measure your real Fios line, not the tunnel.
+  # Home only, no Caddy site: http://<server-ip>:5216. See README.md step 18.
+  myspeed:
+    image: germannewsmaker/myspeed:latest
+    container_name: myspeed
+    environment:
+      TZ: ${TZ}
+    ports:
+      - 5216:5216
+    volumes:
+      # Every test result lives here.
+      - ${CONFIG_DIR}/myspeed:/myspeed/data
+    networks:
+      media:
+        # So the dashboard can show the latest result on its tile.
+        ipv4_address: 172.30.0.18
+    restart: unless-stopped
+
   # ---- The password safe: Vaultwarden, a home-made Bitwarden server. ----
   # The official Bitwarden apps and browser extensions talk to it as if it were Bitwarden's own cloud.
   # No port on your network: the apps insist on HTTPS, so the only way in is
