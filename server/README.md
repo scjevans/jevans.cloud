@@ -1022,12 +1022,12 @@ button at the top to turn it on, then tick the rows you want. A good Netflix-lik
 | Collections | Your collections, including Oscar Winners once step c is done |
 | Discover, My Requests | Things from Seerr you don't have yet, with a request button |
 
-**No Modular Home in the menu?** Plugin Pages is missing: the log (`docker logs jellyfin | grep -i pluginpages`)
-says `PluginPages plugin not found`. Install it, restart, and refresh.
-
 Save (it doesn't say it saved), then refresh with Ctrl+Shift+R. Each person picks their own rows the
 same way. Discover and My Requests use Seerr: if they're empty, Dashboard → Plugins → **Home Screen
 Sections** and enter `http://seerr:5055` with Seerr's API key.
+
+**No Modular Home in the menu?** Plugin Pages is missing: the log (`docker logs jellyfin | grep -i pluginpages`)
+says `PluginPages plugin not found`. Install it, restart, and refresh.
 
 **c. Add the Oscar winners.** Get a free API key from [omdbapi.com](https://www.omdbapi.com/apikey.aspx)
 (it's emailed to you; click the link in the email to switch it on). Then:
