@@ -15,9 +15,6 @@ networks:
   guide:
   # The dashboard and its Docker helper talk on their own network, away from the media apps.
   dashboard:
-  # Jellystat and its database talk on a private line. The database has no internet and no door to your network.
-  jellystat:
-    internal: true
   # Grafana, Prometheus and cAdvisor talk here. Only Grafana has a door to your network.
   monitoring:
 
@@ -278,50 +275,41 @@ services:
         ipv4_address: 172.30.0.14
     restart: unless-stopped
 
-  # Watch statistics for Jellyfin: who watched what, when, and for how long. Home only, no Caddy site.
-  # Open it at http://<server-ip>:3002. See README.md step 11.
-  jellystat:
-    image: cyfershepard/jellystat:latest
-    container_name: jellystat
-    depends_on:
-      jellystat-db:
-        condition: service_healthy
+  # Watch statistics for Jellyfin: what's playing now, who watched what, when, and for how long.
+  # Home only, no Caddy site. Open it at http://<server-ip>:3002. See README.md step 11.
+  jellydash:
+    image: ghcr.io/themartz90/jellydash:latest
+    container_name: jellydash
     environment:
-      TZ: ${TZ}
-      POSTGRES_IP: jellystat-db
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: jellystat
-      POSTGRES_PASSWORD: ${JELLYSTAT_DB_PASSWORD}
-      JWT_SECRET: ${JELLYSTAT_JWT_SECRET}
+      APP_TIMEZONE: ${TZ}
+      # Keeps its notebook in one small file (SQLite), so it needs no database container.
+      DB_DRIVER: sqlite3
+      DB_NAME: /var/www/html/var/data/jellydash.sqlite
+      # Talks to Jellyfin inside the server. The link address is what your browser opens.
+      JELLYFIN_URL: http://jellyfin:8096
+      JELLYFIN_LINK_URL: http://${SERVER_IP}:8096
+      JELLYFIN_API_TOKEN: ${JELLYDASH_JELLYFIN_API_KEY}
+      # Optional: a Requests page and alerts for new Seerr requests.
+      JELLYSEER_URL: ${JELLYDASH_SEERR_API_KEY:+http://seerr:5055}
+      JELLYSEER_API_TOKEN: ${JELLYDASH_SEERR_API_KEY:-}
+      # Optional: "Jack started watching ..." on your phone through ntfy.sh.
+      NTFY_URL: ${JELLYDASH_NTFY_TOPIC:+https://ntfy.sh}
+      NTFY_TOPIC: ${JELLYDASH_NTFY_TOPIC:-}
+      # Its own login, made the first time it starts.
+      AUTH_ENABLED: "true"
+      AUTH_ADMIN_USER: ${JELLYDASH_ADMIN_USER}
+      AUTH_ADMIN_PASSWORD: ${JELLYDASH_ADMIN_PASSWORD}
     ports:
-      # 3000 inside, 3002 outside: the dashboard has 3000 and AdGuard has 3001.
-      - 3002:3000
+      # 80 inside, 3002 outside: the same address Jellystat had.
+      - 3002:80
     volumes:
-      - ${CONFIG_DIR}/jellystat/backup-data:/app/backend/backup-data
+      - ${CONFIG_DIR}/jellydash/data:/var/www/html/var/data
+      - ${CONFIG_DIR}/jellydash/sessions:/var/www/html/var/sessions
+      - ${CONFIG_DIR}/jellydash/uploads:/var/www/html/public/uploads
     networks:
-      jellystat:
-      # So it can reach Jellyfin at http://jellyfin:8096.
+      # So it can reach Jellyfin at http://jellyfin:8096 and Seerr at http://seerr:5055.
       media:
         ipv4_address: 172.30.0.16
-    restart: unless-stopped
-
-  # Jellystat's notebook: a small Postgres database. Only Jellystat can reach it.
-  jellystat-db:
-    image: postgres:15
-    container_name: jellystat-db
-    environment:
-      POSTGRES_USER: jellystat
-      # Only used the very first time, when the database is created. Changing it later in .env does nothing.
-      POSTGRES_PASSWORD: ${JELLYSTAT_DB_PASSWORD}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jellystat"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    volumes:
-      - ${CONFIG_DIR}/jellystat/db:/var/lib/postgresql/data
-    networks:
-      - jellystat
     restart: unless-stopped
 
   # ---- The front door: lets people outside your home reach Jellyfin and Seerr, and nothing else. ----
@@ -492,7 +480,7 @@ services:
       # Open straight onto the server dashboard.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/server.json
     ports:
-      # 3000 inside, 3003 outside: the dashboard, AdGuard and Jellystat have 3000 to 3002.
+      # 3000 inside, 3003 outside: the dashboard, AdGuard and JellyDash have 3000 to 3002.
       - 3003:3000
     volumes:
       - ${CONFIG_DIR}/grafana:/var/lib/grafana

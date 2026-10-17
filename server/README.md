@@ -20,7 +20,7 @@ Think of it as a small restaurant:
 | **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
 | **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
-| **Jellystat** | 3002 | Keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
+| **JellyDash** | 3002 | Shows what's playing right now and keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
 | **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
 | **Uptime Kuma** | 3004 | Checks every app and the server's health each minute, and sends a push notification to your phone when something breaks (step 23) | The night manager who phones you if the freezer stops |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
@@ -406,63 +406,105 @@ use **Disable protection** on the AdGuard home page; it can turn itself back on 
 
 **Undo it entirely:** set the router's DNS back to automatic. Every device goes back to Verizon's DNS.
 
-### 11. Watch statistics (Jellystat)
+### 11. Watch statistics (JellyDash)
 
-Jellyfin's own dashboard only shows what's playing right now. Jellystat is the waiter's notebook: it
-writes down every play (who, what, which device, how long) so you can look back at the most-watched
-shows, who watches the most, and when the house watches. It's home only, at `http://192.168.1.95:3002`.
+Jellyfin's own dashboard only shows what's playing right now. [JellyDash](https://github.com/themartz90/jellydash)
+is the waiter's notebook: it writes down every play (who, what, which device, how long, direct play or
+transcode) so you can look back at the most-watched shows, who watches the most, and when the house
+watches. It also has a live "Now playing" page and can ping your phone when someone presses play.
+It's home only, at `http://192.168.1.95:3002`.
 
-It keeps its notebook in a small database (Postgres) in its own container, `jellystat-db`. That
-database sits on a private line only Jellystat can use: no internet and no port on your network.
+It keeps its notebook in one small file (a SQLite database) in `/opt/media/config/jellydash/data`, so
+unlike Jellystat it needs no separate database container. Think of it as a paper notebook in a drawer
+instead of a filing cabinet with its own clerk.
 
-**a. Get the new files.**
+**Coming from Jellystat?** JellyDash takes over Jellystat's address (port 3002), so bookmarks and the
+Homepage tile keep working. Jellystat's history can't be copied across (the two keep different kinds of
+notebook), but its folder stays on the drive until you delete it in step g. JellyDash *can* read
+history from Jellyfin's **Playback Reporting** plugin, see step f.
+
+**a. Stop Jellystat.** Do this *before* pulling, while the compose file still knows about it:
+
+```sh
+cd ~/jevans.cloud/server && docker compose rm -sf jellystat jellystat-db
+```
+
+(`rm -sf` means stop the container and remove it, without asking. Its data folder isn't touched.)
+
+**b. Get the new files.**
 
 ```sh
 cd ~/jevans.cloud && git pull
 ```
 
-**b. Make its two secrets.** Jellystat needs a database password and a "JWT secret" (the stamp it puts
-on login tickets so nobody can forge one). These two lines invent long random ones and add them to
-your `.env`. Run each once:
+**c. Make a Jellyfin API key.** This is a key card JellyDash uses to read Jellyfin's records. In Jellyfin:
+Dashboard → API Keys → **+**, name it `JellyDash`, and copy the key it shows. Then add it to `.env`,
+pasting the key in place of `PASTE-KEY-HERE`:
 
 ```sh
-echo "JELLYSTAT_DB_PASSWORD=$(openssl rand -hex 24)" >> ~/jevans.cloud/server/.env
+echo "JELLYDASH_JELLYFIN_API_KEY=PASTE-KEY-HERE" >> ~/jevans.cloud/server/.env
+```
+
+**d. Make your JellyDash login.** JellyDash has its own login, separate from Jellyfin's. Pick a username
+(here `jack`), and let the second line invent a long random password:
+
+```sh
+echo "JELLYDASH_ADMIN_USER=jack" >> ~/jevans.cloud/server/.env
 ```
 
 ```sh
-echo "JELLYSTAT_JWT_SECRET=$(openssl rand -hex 32)" >> ~/jevans.cloud/server/.env
+echo "JELLYDASH_ADMIN_PASSWORD=$(openssl rand -hex 12)" >> ~/jevans.cloud/server/.env
 ```
 
-You never need to read or type them. Don't run them twice: if you did, open `.env` with `nano` and
-delete the extra lines at the bottom before going on.
+Then see the password, so you can save it in Vaultwarden:
 
-**c. Start it.**
+```sh
+grep JELLYDASH_ADMIN_PASSWORD ~/jevans.cloud/server/.env
+```
+
+Run each `echo` once. If you ran one twice, open `.env` with `nano` and delete the extra line at the
+bottom. Want Seerr requests in JellyDash too? Add `JELLYDASH_SEERR_API_KEY=` with Seerr's key (Seerr:
+Settings → General → API Key) the same way. Optional.
+
+**e. Start it.**
 
 ```sh
 cd ~/jevans.cloud/server && docker compose up -d
 ```
 
 ```sh
-docker logs jellystat 2>&1 | tail -10
+docker logs jellydash 2>&1 | tail -10
 ```
 
-Give it a minute the first time while the database sets itself up.
+You should see `starting background workers`. Open `http://192.168.1.95:3002` and sign in with the
+username and password from step d. There's no setup wizard: it already knows where Jellyfin is
+(`http://jellyfin:8096`, inside the server) from the compose file. From now on it checks Jellyfin every
+30 seconds, even when nobody has the page open.
 
-**d. Make a Jellyfin API key.** This is a key card Jellystat uses to read Jellyfin's records. In Jellyfin:
-Dashboard → API Keys → **+**, name it `Jellystat`, and copy the key it shows.
+**f. History from before today (optional).** JellyDash only sees plays from the moment it starts. If you
+installed Jellyfin's **Playback Reporting** plugin for Jellystat, that plugin has been keeping its own
+history: open JellyDash → History → **Import history** → **Import from server plugin**. It counts the
+plays first and asks before saving anything. Not installed? Install it now (Dashboard → Plugins →
+Catalog → Playback Reporting) and it's a second notebook from today on.
 
-**e. Connect them.** Open `http://192.168.1.95:3002`:
+**Phone alerts (optional).** JellyDash can send "Jack started watching The Office" through ntfy, the
+same app Uptime Kuma uses (step 23). Pick a *different* hard-to-guess topic name from Uptime Kuma's, add
+`JELLYDASH_NTFY_TOPIC=your-topic-name` to `.env`, run `docker compose up -d`, and subscribe to that
+topic in the ntfy app. Anyone who knows the topic name can read it, so make it random.
 
-1. Create a Jellystat username and password (this is just for Jellystat, not Jellyfin).
-2. Jellyfin URL: `http://jellyfin:8096`. API key: paste the one from step d. Save.
-3. Settings → Tasks: run **Full Sync** once, so it reads in your libraries and Jellyfin's past plays.
+**g. Delete Jellystat for good (once you're happy).** Nothing here is needed by JellyDash. These remove
+Jellystat's folder (its notebook and database), its two downloaded images, and its old private network:
 
-From then on it checks Jellyfin on its own every few minutes. Use the plain `http://jellyfin:8096`, not
-`https://media.jevans.cloud`: the two containers talk inside the server and never leave the house.
+```sh
+sudo rm -rf /opt/media/config/jellystat
+```
 
-**Want history from before today?** Jellyfin only keeps a short activity log. If you install Jellyfin's
-**Playback Reporting** plugin (Dashboard → Plugins → Catalog), Jellystat can import its history under
-Settings → Tasks → Import Playback Reporting Data. Optional.
+```sh
+docker image rm cyfershepard/jellystat postgres:15 ; docker network prune -f
+```
+
+Then open `.env` with `nano` and delete the two `JELLYSTAT_...` lines. Also delete the old `Jellystat`
+key in Jellyfin (Dashboard → API Keys).
 
 ### 12. Jellyfin Enhanced (extra features inside Jellyfin)
 
@@ -497,7 +539,7 @@ docker restart jellyfin
 again. Refresh the browser with Ctrl+F5 and press `?`: if the Enhanced panel opens, it worked.
 
 **d. Connect it to the other apps (optional).** Dashboard → Plugins → **Jellyfin Enhanced**. It talks to
-them from inside the server, so use the container names, like Seerr and Jellystat do:
+them from inside the server, so use the container names, like Seerr and JellyDash do:
 
 | App | URL | API key from |
 | --- | --- | ------------ |
@@ -616,7 +658,7 @@ containers:
 | `prometheus` | The logbook | Asks both sensors for their numbers every 30 seconds and keeps 30 days of them |
 | `grafana` | The dashboard | Draws the charts. The only one you open: `http://192.168.1.95:3003` |
 
-It's home only, like Jellystat: no Caddy site and no port forwarding, so nobody outside the house can
+It's home only, like JellyDash: no Caddy site and no port forwarding, so nobody outside the house can
 see it. Grafana comes already plugged into Prometheus, with a ready-made **Media server** dashboard (it's
 in `grafana/dashboards/server.json`), so there's nothing to wire up.
 
@@ -1225,7 +1267,7 @@ gluetun
 ```
 
 then the same again for each of these (one monitor each): `jellyfin`, `qbittorrent`, `prowlarr`,
-`sonarr`, `radarr`, `sabnzbd`, `bazarr`, `seerr`, `caddy`, `adguard`, `vaultwarden`, `homepage`.
+`sonarr`, `radarr`, `sabnzbd`, `bazarr`, `seerr`, `jellydash`, `caddy`, `adguard`, `vaultwarden`, `homepage`.
 
 The `gluetun` one doubles as your VPN alarm: Gluetun tells Docker it's unhealthy when the tunnel drops,
 and Uptime Kuma passes that on. (qBittorrent and Prowlarr have no internet then, by design.)
