@@ -407,6 +407,8 @@ services:
       TZ: ${TZ}
       # The address you open it at, used for links in its alerts.
       APP_URL: http://${SERVER_IP}:3003
+      # Lets the read-only "reports" login see the server too (README.md step 23). Only you use Beszel, so nothing else changes.
+      SHARE_ALL_SYSTEMS: "true"
     ports:
       # 8090 inside, 3003 outside: the address Grafana had.
       - 3003:8090
