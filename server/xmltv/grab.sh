@@ -21,8 +21,10 @@ while true; do
     m=0; lists=""
     for url in $PLAYLISTS; do
       m=$((m + 1))
+      echo "Fetching playlist $m: $url"
       curl -fsSL --retry 3 -o "$IPTV/playlist$m.m3u" "$url" && lists="$lists $IPTV/playlist$m.m3u"
     done
+    echo "Fetching iptv-org's list of which website has each channel's listings..."
     if [ -n "$lists" ] && curl -fsSL --retry 3 -o "$IPTV/guides.json" https://iptv-org.github.io/api/guides.json \
        && perl /usr/local/bin/make-channels.pl "$IPTV/guides.json" "$IPTV/channels.xml.new" $lists; then
       mv "$IPTV/channels.xml.new" "$IPTV/channels.xml"
