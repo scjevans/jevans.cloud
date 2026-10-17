@@ -1078,7 +1078,7 @@ Nobody publishes a ready-made guide for those channels, so this takes two contai
 | Container | Job | Like |
 | --------- | --- | ---- |
 | **xmltv** | Every 6 hours, reads the playlist, writes a list of which website has each channel's listings, and delivers the finished guide to Jellyfin | The paperboy, who also hands the reporter a list of stations to call |
-| **iptv-epg** | Twice a day, visits those websites and writes down 2 days of what's on | The reporter phoning each station for its schedule |
+| **iptv-epg** | Once a day at 2 AM, visits those websites and writes down 2 days of what's on | The reporter phoning each station for its schedule |
 
 Guides are written in **XMLTV**, the standard format for TV listings. `xmltv` keeps the last good
 guide if a run fails, so your grid doesn't go blank.
