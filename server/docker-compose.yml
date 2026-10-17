@@ -229,8 +229,11 @@ services:
       TZ: ${TZ}
       # 2am and 2pm.
       CRON_SCHEDULE: "0 2,14 * * *"
-      # Three days of listings, ten websites at a time. More days means a much longer run.
-      DAYS: 3
+      # Two days of listings, ten websites at a time. More days means a longer run and more memory.
+      DAYS: 2
+      # It keeps every listing in memory until the end. Node.js stops at about 2 GB unless told
+      # otherwise, which isn't enough for ~800 channels. 4 GB is the ceiling, not what it always uses.
+      NODE_OPTIONS: --max-old-space-size=4096
       MAX_CONNECTIONS: 10
       RUN_AT_STARTUP: "true"
     volumes:
