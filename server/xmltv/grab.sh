@@ -3,15 +3,37 @@
 # Collects every guide it's given, staples them into one file with XMLTV's own Perl library (merge.pl),
 # and leaves /config/guide/guide.xml for Jellyfin (README.md step 22).
 
+PLAYLISTS="${XMLTV_PLAYLISTS:-}"
 URLS="${XMLTV_GUIDE_URLS:-}"
 GRABBER="${XMLTV_GRABBER:-}"
 DAYS="${XMLTV_DAYS:-14}"
 EVERY="${XMLTV_EVERY_HOURS:-12}"
 PARTS=/config/parts
+# Shared with the iptv-epg container: we leave channels.xml here, it leaves guide.xml.
+IPTV=/config/iptv-org
 
-mkdir -p /config/guide "$PARTS"
+mkdir -p /config/guide "$PARTS" "$IPTV"
 
 while true; do
+  # 0. M3U playlists from iptv-org: work out which websites have listings for their channels,
+  #    and leave that list for the iptv-epg container, which builds the guide (README.md step 22).
+  if [ -n "$PLAYLISTS" ]; then
+    m=0; lists=""
+    for url in $PLAYLISTS; do
+      m=$((m + 1))
+      curl -fsSL --retry 3 -o "$IPTV/playlist$m.m3u" "$url" && lists="$lists $IPTV/playlist$m.m3u"
+    done
+    if [ -n "$lists" ] && curl -fsSL --retry 3 -o "$IPTV/guides.json" https://iptv-org.github.io/api/guides.json \
+       && perl /usr/local/bin/make-channels.pl "$IPTV/guides.json" "$IPTV/channels.xml.new" $lists; then
+      mv "$IPTV/channels.xml.new" "$IPTV/channels.xml"
+    else
+      rm -f "$IPTV/channels.xml.new"
+      echo "Couldn't update the iptv-org channel list; keeping the last one."
+    fi
+    # The guide iptv-epg built last time it ran.
+    [ -s "$IPTV/guide.xml" ] && cp "$IPTV/guide.xml" "$PARTS/iptv-org.xml"
+  fi
+
   # 1. Guides published online, usually by the same people who make the M3U playlist.
   n=0
   for url in $URLS; do
@@ -50,9 +72,11 @@ while true; do
   fi
 
   # 3. Staple the pieces into one guide. Write a spare file first, so Jellyfin never reads half a guide.
+  #    A single guide just gets copied: reading a big one into memory to "combine" it with nothing is slow.
   set -- "$PARTS"/*.xml
   if [ -f "$1" ]; then
-    if perl /usr/local/bin/merge.pl /config/guide/guide.xml.new "$@"; then
+    if { [ $# -eq 1 ] && cp "$1" /config/guide/guide.xml.new; } \
+       || { [ $# -gt 1 ] && perl /usr/local/bin/merge.pl /config/guide/guide.xml.new "$@"; }; then
       mv /config/guide/guide.xml.new /config/guide/guide.xml
       echo "Guide updated from $# source(s). Next update in $EVERY hours."
     else
@@ -60,7 +84,7 @@ while true; do
       echo "Couldn't combine the guides; keeping the old one."
     fi
   else
-    echo "No guides yet. Set XMLTV_GUIDE_URLS in .env (README.md step 22)."
+    echo "No guide yet. If you just started iptv-epg, it's still building one (README.md step 22)."
   fi
 
   sleep "$((EVERY * 3600))"

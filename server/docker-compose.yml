@@ -190,9 +190,9 @@ services:
 
   # The TV guide for Jellyfin's Live TV: what's on each channel, and when.
   # Built from XMLTV (https://github.com/xmltv/xmltv) using the Dockerfile in the xmltv/ folder next to this file.
-  # Every 12 hours it fetches the guides that go with your M3U playlists, combines them into one guide.xml,
-  # and leaves it where Jellyfin can read it. No web page and no port. Outside the VPN: guide data isn't private.
-  # See README.md step 22.
+  # Every 6 hours it reads your iptv-org playlists, tells iptv-epg (below) which channels need listings,
+  # picks up the guide iptv-epg built, and leaves guide.xml where Jellyfin can read it.
+  # No web page and no port. Outside the VPN: guide data isn't private. See README.md step 22.
   xmltv:
     build: ./xmltv
     container_name: xmltv
@@ -202,15 +202,39 @@ services:
       TZ: ${TZ}
       # Grabbers keep their settings in $HOME/.xmltv, so point $HOME at its config folder.
       HOME: /config
-      # The guide links, separated by spaces. Set in .env.
+      # The M3U playlists you add to Jellyfin, separated by spaces. Set in .env.
+      XMLTV_PLAYLISTS: ${XMLTV_PLAYLISTS:-}
+      # Optional: ready-made guide links, separated by spaces.
       XMLTV_GUIDE_URLS: ${XMLTV_GUIDE_URLS:-}
       # Optional: also run an XMLTV grabber, e.g. tv_grab_zz_sdjson for Schedules Direct (README.md step 22g).
       XMLTV_GRABBER: ${XMLTV_GRABBER:-}
       XMLTV_DAYS: 14
-      XMLTV_EVERY_HOURS: 12
+      XMLTV_EVERY_HOURS: 6
     volumes:
-      # The downloaded guides, any grabber settings, and the finished guide in guide/.
+      # The downloaded guides, any grabber settings, the iptv-org/ folder it shares with iptv-epg,
+      # and the finished guide in guide/.
       - ${CONFIG_DIR}/xmltv:/config
+    networks:
+      - guide
+    restart: unless-stopped
+
+  # Builds the TV guide for iptv-org's channels. Nobody publishes one ready-made, so this visits each
+  # channel's listings website and writes down what's on, twice a day. Like a reporter phoning every
+  # station for its schedule, so the paperboy (xmltv) has something to deliver.
+  # It reads channels.xml (written by xmltv) and writes guide.xml, both in the shared iptv-org/ folder.
+  iptv-epg:
+    image: ghcr.io/iptv-org/epg:master
+    container_name: iptv-epg
+    environment:
+      TZ: ${TZ}
+      # 2am and 2pm.
+      CRON_SCHEDULE: "0 2,14 * * *"
+      # Three days of listings, ten websites at a time. More days means a much longer run.
+      DAYS: 3
+      MAX_CONNECTIONS: 10
+      RUN_AT_STARTUP: "true"
+    volumes:
+      - ${CONFIG_DIR}/xmltv/iptv-org:/epg/public
     networks:
       - guide
     restart: unless-stopped
