@@ -482,7 +482,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Everything through the server's network cable, VPN traffic included.",
+      "description": "The whole server's real internet and home network traffic, read from its network card. VPN traffic included; Docker's internal links and Tailscale are left out so nothing is counted twice.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -492,7 +492,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[$__rate_interval])) * 8",
+          "expr": "sum(rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*|tailscale.*\"}[$__rate_interval])) * 8",
           "legendFormat": "Coming in",
           "datasource": {
             "type": "prometheus",
@@ -501,7 +501,7 @@
         },
         {
           "refId": "B",
-          "expr": "sum(rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[$__rate_interval])) * 8",
+          "expr": "sum(rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*|tailscale.*\"}[$__rate_interval])) * 8",
           "legendFormat": "Going out",
           "datasource": {
             "type": "prometheus",
@@ -803,7 +803,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "qBittorrent and Prowlarr share gluetun's connection, so their traffic shows up as gluetun.",
+      "description": "What each app pulls in. qBittorrent and Prowlarr share the VPN's connection, so they appear together as \"VPN: qBittorrent + Prowlarr\". node-exporter and jellyfin-discovery are left out: they sit on the server's own network, so they would show the whole server's traffic, not their own. For the server's total, see \"Internet and home network traffic\" at the top.",
       "gridPos": {
         "h": 10,
         "w": 12,
@@ -813,7 +813,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (name) (rate(container_network_receive_bytes_total{name!=\"\"}[$__rate_interval])) * 8",
+          "expr": "label_replace(sum by (name) (rate(container_network_receive_bytes_total{name!=\"\",name!~\"node-exporter|jellyfin-discovery\",interface=~\"eth[0-9]+\"}[$__rate_interval])) * 8, \"name\", \"VPN: qBittorrent + Prowlarr\", \"name\", \"gluetun\")",
           "legendFormat": "{{name}}",
           "datasource": {
             "type": "prometheus",
@@ -861,7 +861,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Jellyfin going up here means someone is streaming from outside the house.",
+      "description": "What each app sends out. Jellyfin going up here means someone is streaming. qBittorrent and Prowlarr appear together as \"VPN: qBittorrent + Prowlarr\". For the server's total, see \"Internet and home network traffic\" at the top.",
       "gridPos": {
         "h": 10,
         "w": 12,
@@ -871,7 +871,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (name) (rate(container_network_transmit_bytes_total{name!=\"\"}[$__rate_interval])) * 8",
+          "expr": "label_replace(sum by (name) (rate(container_network_transmit_bytes_total{name!=\"\",name!~\"node-exporter|jellyfin-discovery\",interface=~\"eth[0-9]+\"}[$__rate_interval])) * 8, \"name\", \"VPN: qBittorrent + Prowlarr\", \"name\", \"gluetun\")",
           "legendFormat": "{{name}}",
           "datasource": {
             "type": "prometheus",
