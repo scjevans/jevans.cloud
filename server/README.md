@@ -706,8 +706,11 @@ draw a line. What's on it:
   restart. Green is fine, orange means keep an eye on it, red means look now.
 - **The server:** CPU and memory over time, network traffic, drive activity (`sda` is the system SSD,
   `sdb` the media drive), and free space.
-- **The apps:** CPU, memory, download and upload per container. Downloads show up under `gluetun`,
-  because qBittorrent borrows its connection. Jellyfin's upload going up means someone is streaming.
+- **The apps:** CPU, memory, download and upload per container. Torrent downloads show up as
+  `VPN: qBittorrent + Prowlarr`, because both borrow gluetun's connection. Jellyfin's upload going up
+  means someone is streaming. `node-exporter` and `jellyfin-discovery` aren't on the traffic charts:
+  they sit on the server's own network, so they'd show the whole server's traffic under their name.
+  The server's real total is the **Internet and home network traffic** chart in the row above.
 
 Change the time range top right (Last 6 hours, Last 7 days...). Click a name under a chart to show
 just that app.
