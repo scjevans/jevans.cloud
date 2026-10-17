@@ -670,6 +670,13 @@ cd ~/jevans.cloud && git pull && mkdir -p /opt/media/config/beszel/data /opt/med
 cd ~/jevans.cloud/server && docker compose up -d beszel
 ```
 
+If you had Grafana before, that says `port is already allocated`: Grafana still holds 3003. Stop the
+four old containers first, then run the line above again:
+
+```sh
+docker rm -f grafana prometheus node-exporter cadvisor
+```
+
 **b. Make your login.** On a computer at home, open `http://192.168.1.95:3003` and make an account
 (email and password; save them in Vaultwarden). The email is only a username: nothing is sent to it.
 
@@ -703,8 +710,8 @@ docker compose up -d --remove-orphans && docker compose restart homepage
 ```
 
 Back in the browser, click **Add System** in the box. The server turns green within a minute.
-(`--remove-orphans` also stops and removes Grafana, Prometheus, node-exporter and cAdvisor if you had
-them; step g tidies up after them.)
+(`--remove-orphans` clears out anything else the compose file no longer lists; step g tidies up after
+Grafana.)
 
 **d. Look around.** Click **jevans-server**. Charts need a few minutes of readings before they draw a line.
 
