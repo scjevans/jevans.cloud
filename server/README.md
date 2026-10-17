@@ -1304,6 +1304,114 @@ the error it got. Then:
 - **Media drive:** check the USB cable and power, then `sudo mount -a` and `docker compose restart`.
 - **Drives, temperature, memory (from Beszel):** open Beszel for which drive or app it is.
 
+### 23. A weekly check-up from Claude (Beszel reports)
+
+Beszel only opens at home (or over Tailscale), and that's how it should stay. So instead of letting
+Claude in, the server sends Claude a summary. Think of a nurse who copies the day's chart readings onto
+one sheet and drops it in the doctor's private mailbox: the full charts never leave the house, and the
+doctor reads the sheets once a week and writes back with advice.
+
+- **The nurse:** `scripts/beszel-report.py`. Once a day it logs in to Beszel with a *read-only* login,
+  works out averages and peaks (CPU, memory, swap, both drives, temperatures, network, each container),
+  and writes them to a small file.
+- **The mailbox:** a *private* GitHub repo, `server-reports`, that only you (and Claude) can see. The
+  server gets a key that opens that one repo and nothing else.
+- **The doctor:** a weekly Claude check-in in your project that reads the latest sheets and posts
+  suggestions in the "Beszel reports" thread.
+
+Only numbers and container names leave the server: no passwords, no addresses, no film titles.
+
+**a. Make the mailbox.** On GitHub (the app or github.com/new): name it `server-reports`, choose
+**Private**, tick **Add a README file**, and click **Create repository**.
+
+**b. Give the server a key to it.** On the server, make a key just for this:
+
+```sh
+ssh-keygen -t ed25519 -N "" -C "jevans-server reports" -f ~/.ssh/server_reports
+```
+
+Show the public half (the part that's safe to share), and copy the whole line it prints:
+
+```sh
+cat ~/.ssh/server_reports.pub
+```
+
+On GitHub, open `server-reports` → **Settings** → **Deploy keys** → **Add deploy key**. Title
+`jevans-server`, paste the line into **Key**, tick **Allow write access**, and click **Add key**.
+
+**c. Copy the mailbox onto the server.** If it asks "Are you sure you want to continue connecting?",
+that's GitHub introducing itself; it says yes for you.
+
+```sh
+GIT_SSH_COMMAND="ssh -i ~/.ssh/server_reports -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" git clone git@github.com:scjevans/server-reports.git ~/server-reports
+```
+
+Tell that folder to always use its key, and who's signing the reports:
+
+```sh
+cd ~/server-reports && git config core.sshCommand "ssh -i ~/.ssh/server_reports -o IdentitiesOnly=yes" && git config user.name "jevans-server" && git config user.email "server@jevans.cloud"
+```
+
+**d. Get the new files and restart Beszel.** The hub gains one setting, `SHARE_ALL_SYSTEMS`, so a
+second login can see the server. You're its only user, so nothing else changes.
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d beszel
+```
+
+**e. Make the read-only login.** First make a password for it in Vaultwarden (the generator is fine)
+and save it as "Beszel reports". On a computer at home, open `http://192.168.1.95:3003/_/` (Beszel's
+back room, note the `/_/`) and log in with your usual Beszel email and password. Click **users** on the
+left → **New record**, and fill in:
+
+- **email:** `reports@jevans.cloud` (only a username, nothing is sent to it)
+- **password** and **passwordConfirm:** the one you just made
+- **verified:** on
+- **role:** `readonly`
+
+Click **Create**. A read-only login can look at every chart but can't change a thing.
+
+**f. Put the login in `.env`.**
+
+```sh
+cd ~/jevans.cloud/server && echo "BESZEL_REPORT_EMAIL=reports@jevans.cloud" >> .env
+```
+
+Run this, paste the password when it asks, and press Enter:
+
+```sh
+read -p "Password: " p && echo "BESZEL_REPORT_PASSWORD='$p'" >> .env
+```
+
+**g. Try it.**
+
+```sh
+~/jevans.cloud/server/scripts/beszel-report.py
+```
+
+It should say `Report 2026-… written to /home/mediabox/server-reports`, and `server-reports` on GitHub
+now has a `latest.md` (the sheet) and a `daily` folder (one file per day, so trends survive after Beszel
+thins out its old readings).
+
+**h. Run it every morning.** This adds one line to cron, at 6:50 AM:
+
+```sh
+( crontab -l 2>/dev/null; echo "50 6 * * * $HOME/jevans.cloud/server/scripts/beszel-report.py >> $HOME/server-reports.log 2>&1" ) | crontab -
+```
+
+**i. Tell Claude it's working,** in the project's "Beszel reports" thread. Claude then reads the reports
+every week and posts what it would change: an app that's eating memory, swap filling up, the media drive
+on course to fill, a container that keeps restarting, a CPU running hot.
+
+If the report fails: `tail ~/server-reports.log` says why. `HTTP Error 400` means the email or password
+in `.env` doesn't match step e. "can't see any systems" means step d's `docker compose up -d beszel`
+didn't run. `Permission denied (publickey)` means the deploy key in step b is missing or lacks
+**Allow write access**.
+
 ## Everyday commands
 
 ```sh
