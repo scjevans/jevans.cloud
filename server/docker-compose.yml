@@ -11,8 +11,6 @@ networks:
         # Fixed range so the VPN firewall can allow traffic between containers,
         # and so Prowlarr (inside the VPN) can find Sonarr/Radarr by address.
         - subnet: 172.30.0.0/24
-  # The TV guide fetcher only needs the internet, so it gets its own quiet line.
-  guide:
   # The dashboard and its Docker helper talk on their own network, away from the media apps.
   dashboard:
   # Grafana, Prometheus and cAdvisor talk here. Only Grafana has a door to your network.
@@ -174,8 +172,6 @@ services:
       - ${CONFIG_DIR}/jellyfin:/config
       # Jellyfin only needs to read your library, never change it.
       - ${DATA_DIR}/media:/data/media:ro
-      # The TV guide that the xmltv container writes (README.md step 22). Read-only here too.
-      - ${CONFIG_DIR}/xmltv/guide:/xmltv:ro
     # The CPU's built-in graphics chip (Intel Quick Sync), for fast video conversion.
     # Turn it on in Jellyfin: Dashboard → Playback → Transcoding. Remove these two lines on a server without /dev/dri.
     devices:
@@ -183,65 +179,6 @@ services:
     networks:
       media:
         ipv4_address: 172.30.0.10
-    restart: unless-stopped
-
-  # The TV guide for Jellyfin's Live TV: what's on each channel, and when.
-  # Built from XMLTV (https://github.com/xmltv/xmltv) using the Dockerfile in the xmltv/ folder next to this file.
-  # Every 6 hours it reads your iptv-org playlists, tells iptv-epg (below) which channels need listings,
-  # picks up the guide iptv-epg built, and leaves guide.xml where Jellyfin can read it.
-  # No web page and no port. Outside the VPN: guide data isn't private. See README.md step 22.
-  xmltv:
-    build: ./xmltv
-    container_name: xmltv
-    # Runs as you, so its folder in CONFIG_DIR needs no special owner.
-    user: ${PUID}:${PGID}
-    environment:
-      TZ: ${TZ}
-      # Grabbers keep their settings in $HOME/.xmltv, so point $HOME at its config folder.
-      HOME: /config
-      # The M3U playlists you add to Jellyfin, separated by spaces. Set in .env.
-      XMLTV_PLAYLISTS: ${XMLTV_PLAYLISTS:-}
-      # Optional: ready-made guide links, separated by spaces.
-      XMLTV_GUIDE_URLS: ${XMLTV_GUIDE_URLS:-}
-      # Optional: also run an XMLTV grabber, e.g. tv_grab_zz_sdjson for Schedules Direct (README.md step 22g).
-      XMLTV_GRABBER: ${XMLTV_GRABBER:-}
-      XMLTV_DAYS: 14
-      XMLTV_EVERY_HOURS: 6
-    volumes:
-      # The downloaded guides, any grabber settings, the iptv-org/ folder it shares with iptv-epg,
-      # and the finished guide in guide/.
-      - ${CONFIG_DIR}/xmltv:/config
-    networks:
-      - guide
-    restart: unless-stopped
-
-  # Builds the TV guide for iptv-org's channels. Nobody publishes one ready-made, so this visits each
-  # channel's listings website and writes down what's on, once a day. Like a reporter phoning every
-  # station for its schedule, so the paperboy (xmltv) has something to deliver.
-  # Runs iptv-epg/run.sh instead of the image's own timer, to do the channels in batches: all at
-  # once ran out of memory. It reads channels/ (written by xmltv) and writes guides/, both in the
-  # shared iptv-org/ folder.
-  iptv-epg:
-    image: ghcr.io/iptv-org/epg:master
-    container_name: iptv-epg
-    command: ["sh", "/run.sh"]
-    # Passes on "stop" so docker compose down doesn't wait 10 seconds.
-    init: true
-    environment:
-      TZ: ${TZ}
-      # 2am, when nobody is watching. Each run works hard for a while.
-      GRAB_AT: "02:00"
-      # Two days of listings, ten websites at a time. More days means a longer run and more memory.
-      DAYS: 2
-      MAX_CONNECTIONS: 10
-      # Each batch keeps its listings in memory until the end. Node.js stops at about 2 GB unless
-      # told otherwise; this is the ceiling, not what it always uses.
-      NODE_OPTIONS: --max-old-space-size=3072
-    volumes:
-      - ${CONFIG_DIR}/xmltv/iptv-org:/epg/public
-      - ./iptv-epg/run.sh:/run.sh:ro
-    networks:
-      - guide
     restart: unless-stopped
 
   # Lets Jellyfin apps at home find the server on their own. Apps shout "any Jellyfin here?" to the
@@ -494,7 +431,7 @@ services:
   # ---- The alarm: Uptime Kuma checks every app and the server's health once a minute ----
   # and sends a push notification to your phone (through the ntfy app) when something breaks, and again when it's fixed.
   # Like a night watchman doing rounds with a list: "Jellyfin's door open? VPN on? Drive plugged in?"
-  # Home only, no Caddy site: http://<server-ip>:3004. Away from home, Tailscale on your phone gets you in. See README.md step 23.
+  # Home only, no Caddy site: http://<server-ip>:3004. Away from home, Tailscale on your phone gets you in. See README.md step 22.
   uptime-kuma:
     image: louislam/uptime-kuma:2
     container_name: uptime-kuma

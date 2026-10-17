@@ -94,7 +94,7 @@
         widget:
           type: uptimekuma
           url: http://uptime-kuma:3001
-          # The status page made in README.md step 23f.
+          # The status page made in README.md step 22f.
           slug: server
     - Vaultwarden:
         icon: vaultwarden.png
