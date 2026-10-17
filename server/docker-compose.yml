@@ -11,6 +11,8 @@ networks:
         # Fixed range so the VPN firewall can allow traffic between containers,
         # and so Prowlarr (inside the VPN) can find Sonarr/Radarr by address.
         - subnet: 172.30.0.0/24
+  # The TV guide fetcher only needs the internet, so it gets its own quiet line.
+  guide:
   # The dashboard and its Docker helper talk on their own network, away from the media apps.
   dashboard:
   # Jellystat and its database talk on a private line. The database has no internet and no door to your network.
@@ -175,6 +177,8 @@ services:
       - ${CONFIG_DIR}/jellyfin:/config
       # Jellyfin only needs to read your library, never change it.
       - ${DATA_DIR}/media:/data/media:ro
+      # The TV guide that the xmltv container writes (README.md step 22). Read-only here too.
+      - ${CONFIG_DIR}/xmltv/guide:/xmltv:ro
     # The CPU's built-in graphics chip (Intel Quick Sync), for fast video conversion.
     # Turn it on in Jellyfin: Dashboard → Playback → Transcoding. Remove these two lines on a server without /dev/dri.
     devices:
@@ -182,6 +186,33 @@ services:
     networks:
       media:
         ipv4_address: 172.30.0.10
+    restart: unless-stopped
+
+  # The TV guide for Jellyfin's Live TV: what's on each channel, and when.
+  # Built from XMLTV (https://github.com/xmltv/xmltv) using the Dockerfile in the xmltv/ folder next to this file.
+  # Every 12 hours it fetches the guides that go with your M3U playlists, combines them into one guide.xml,
+  # and leaves it where Jellyfin can read it. No web page and no port. Outside the VPN: guide data isn't private.
+  # See README.md step 22.
+  xmltv:
+    build: ./xmltv
+    container_name: xmltv
+    # Runs as you, so its folder in CONFIG_DIR needs no special owner.
+    user: ${PUID}:${PGID}
+    environment:
+      TZ: ${TZ}
+      # Grabbers keep their settings in $HOME/.xmltv, so point $HOME at its config folder.
+      HOME: /config
+      # The guide links, separated by spaces. Set in .env.
+      XMLTV_GUIDE_URLS: ${XMLTV_GUIDE_URLS:-}
+      # Optional: also run an XMLTV grabber, e.g. tv_grab_zz_sdjson for Schedules Direct (README.md step 22g).
+      XMLTV_GRABBER: ${XMLTV_GRABBER:-}
+      XMLTV_DAYS: 14
+      XMLTV_EVERY_HOURS: 12
+    volumes:
+      # The downloaded guides, any grabber settings, and the finished guide in guide/.
+      - ${CONFIG_DIR}/xmltv:/config
+    networks:
+      - guide
     restart: unless-stopped
 
   # Lets Jellyfin apps at home find the server on their own. Apps shout "any Jellyfin here?" to the
