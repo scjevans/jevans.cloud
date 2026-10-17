@@ -1,6 +1,6 @@
 # XMLTV's grabbers, from Debian's own package, in a small box.
-# XMLTV's library and grabbers are Perl. merge.pl uses the library to combine guides;
-# make-channels.pl reads iptv-org's channel list (JSON). curl fetches guides from the internet;
+# XMLTV's grabbers are Perl, and so are merge.pl, which combines guides, and make-channels.pl,
+# which reads iptv-org's channel list (JSON). curl fetches guides from the internet;
 # the Perl packages are what the Schedules Direct grabber needs, if you ever use it.
 # libjson-xs-perl is the fast JSON reader: without it, iptv-org's big channel list takes many minutes to read.
 FROM debian:trixie-slim

@@ -221,23 +221,28 @@ services:
   # Builds the TV guide for iptv-org's channels. Nobody publishes one ready-made, so this visits each
   # channel's listings website and writes down what's on, once a day. Like a reporter phoning every
   # station for its schedule, so the paperboy (xmltv) has something to deliver.
-  # It reads channels.xml (written by xmltv) and writes guide.xml, both in the shared iptv-org/ folder.
+  # Runs iptv-epg/run.sh instead of the image's own timer, to do the channels in batches: all at
+  # once ran out of memory. It reads channels/ (written by xmltv) and writes guides/, both in the
+  # shared iptv-org/ folder.
   iptv-epg:
     image: ghcr.io/iptv-org/epg:master
     container_name: iptv-epg
+    command: ["sh", "/run.sh"]
+    # Passes on "stop" so docker compose down doesn't wait 10 seconds.
+    init: true
     environment:
       TZ: ${TZ}
-      # 2am, when nobody is watching. Each run uses a few GB of memory for a while.
-      CRON_SCHEDULE: "0 2 * * *"
+      # 2am, when nobody is watching. Each run works hard for a while.
+      GRAB_AT: "02:00"
       # Two days of listings, ten websites at a time. More days means a longer run and more memory.
       DAYS: 2
-      # It keeps every listing in memory until the end. Node.js stops at about 2 GB unless told
-      # otherwise, which isn't enough for ~800 channels. 4 GB is the ceiling, not what it always uses.
-      NODE_OPTIONS: --max-old-space-size=4096
       MAX_CONNECTIONS: 10
-      RUN_AT_STARTUP: "true"
+      # Each batch keeps its listings in memory until the end. Node.js stops at about 2 GB unless
+      # told otherwise; this is the ceiling, not what it always uses.
+      NODE_OPTIONS: --max-old-space-size=3072
     volumes:
       - ${CONFIG_DIR}/xmltv/iptv-org:/epg/public
+      - ./iptv-epg/run.sh:/run.sh:ro
     networks:
       - guide
     restart: unless-stopped
