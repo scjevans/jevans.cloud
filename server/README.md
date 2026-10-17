@@ -22,10 +22,9 @@ Think of it as a small restaurant:
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 | **JellyDash** | 3002 | Shows what's playing right now and keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
 | **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
-| **Uptime Kuma** | 3004 | Checks every app and the server's health each minute, and sends a push notification to your phone when something breaks (step 23) | The night manager who phones you if the freezer stops |
+| **Uptime Kuma** | 3004 | Checks every app and the server's health each minute, and sends a push notification to your phone when something breaks (step 22) | The night manager who phones you if the freezer stops |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
 | **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
-| **XMLTV** + **iptv-epg** | | Build and deliver the TV guide (what's on each channel, and when) for Jellyfin's free live TV channels (step 22) | The reporter who collects the TV listings, and the paperboy who delivers them |
 
 ### Why the tunnel matters
 
@@ -80,7 +79,7 @@ cd jevans.cloud/server
 sudo mkdir -p /data/torrents/{movies,tv} /data/usenet/incomplete /data/usenet/complete/{movies,tv} /data/media/{movies,tv} /opt/media/config
 sudo chown -R $USER:$USER /data /opt/media
 mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
-mkdir -p /opt/media/config/grafana /opt/media/config/prometheus /opt/media/config/xmltv/guide /opt/media/config/xmltv/iptv-org
+mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
 ```
 
 Seerr always runs as user 1000 inside its container, so its folder belongs to 1000 whatever your own ID is.
@@ -488,7 +487,7 @@ plays first and asks before saving anything. Not installed? Install it now (Dash
 Catalog → Playback Reporting) and it's a second notebook from today on.
 
 **Phone alerts (optional).** JellyDash can send "Jack started watching The Office" through ntfy, the
-same app Uptime Kuma uses (step 23). Pick a *different* hard-to-guess topic name from Uptime Kuma's, add
+same app Uptime Kuma uses (step 22). Pick a *different* hard-to-guess topic name from Uptime Kuma's, add
 `JELLYDASH_NTFY_TOPIC=your-topic-name` to `.env`, run `docker compose up -d`, and subscribe to that
 topic in the ntfy app. Anyone who knows the topic name can read it, so make it random.
 
@@ -1099,109 +1098,7 @@ The collection then shows up under Movies → **Collections**, and in the Collec
   row. The separate "Collection Sections" plugin, which gives each collection a row of its own, isn't
   out for Jellyfin 12 yet.
 
-### 22. Live TV with a TV guide (XMLTV)
-
-Jellyfin can play live TV channels too, and show a grid of what's on, like a cable box. That
-takes two things, and they're separate jobs:
-
-| Piece | Job | Like |
-| ----- | --- | ---- |
-| **An M3U playlist** | The list of channels and where to stream each one from | The TV aerial |
-| **A guide (XMLTV)** | What's on each channel, and when | The TV listings page in the newspaper |
-
-Fios TV's own channels are locked to Verizon's boxes, so they can't feed Jellyfin. Free internet
-channels can. [iptv-org](https://github.com/iptv-org/iptv) keeps a public M3U playlist of the free
-streams that TV stations and channels put online themselves: around a thousand US ones (local news,
-weather, sports, old shows). The list is maintained by volunteers, so expect some channels to be dead
-or slow on any given day.
-
-Nobody publishes a ready-made guide for those channels, so this takes two containers working together:
-
-| Container | Job | Like |
-| --------- | --- | ---- |
-| **xmltv** | Every 6 hours, reads the playlist, writes a list of which website has each channel's listings, and delivers the finished guide to Jellyfin | The paperboy, who also hands the reporter a list of stations to call |
-| **iptv-epg** | Once a day at 2 AM, visits those websites 50 channels at a time and writes down 2 days of what's on | The reporter phoning each station for its schedule, one batch of calls at a time |
-
-Guides are written in **XMLTV**, the standard format for TV listings. `xmltv` keeps the last good
-guide if a run fails, so your grid doesn't go blank.
-
-**a. Get the new files.**
-
-```sh
-cd ~/jevans.cloud && git pull
-```
-
-**b. Add the playlist to `.env`.** Open it with `nano ~/jevans.cloud/server/.env`. Delete any
-`XMLTV_` lines already at the bottom, then paste these (they're also at the end of `.env.example`):
-
-```sh
-XMLTV_PLAYLISTS=https://iptv-org.github.io/iptv/countries/us.m3u
-XMLTV_GUIDE_URLS=
-XMLTV_GRABBER=
-```
-
-Ctrl+O, Enter to save, Ctrl+X to close.
-
-**c. Make the folders, then start xmltv first** so the station list exists before iptv-epg looks for it:
-
-```sh
-mkdir -p /opt/media/config/xmltv/guide /opt/media/config/xmltv/iptv-org
-```
-
-```sh
-cd ~/jevans.cloud/server && docker compose build xmltv && docker compose up -d xmltv && docker logs -f xmltv
-```
-
-Wait for a line like `1000 channels in the playlists, 600 with a known guide, in 12 batches`, then Ctrl+C. (It
-then says `No guide yet`. That's expected: the reporter hasn't been out yet.)
-
-**d. Start iptv-epg and let it build the first guide:**
-
-```sh
-docker compose up -d && docker logs -f iptv-epg
-```
-
-The first run visits hundreds of websites and can take an hour or more. It works through the
-channels in batches (`Batch 1 of 12...`), because doing them all at once runs out of memory. It's
-finished when the log says `All 12 batches done`. Ctrl+C, then hand the guide to the paperboy now
-instead of waiting 6 hours:
-
-```sh
-docker compose restart xmltv && docker logs -f xmltv
-```
-
-Wait for `Guide updated from 12 source(s)` (one per batch), then Ctrl+C. Jellyfin sees the guide as `/xmltv/guide.xml`.
-
-**e. Add the playlist in Jellyfin:** Dashboard → Live TV → Tuner Devices → **+**. Tuner type
-**M3U Tuner**, File or URL `https://iptv-org.github.io/iptv/countries/us.m3u`. Leave the rest and Save.
-
-**f. Add the guide:** same page, TV Guide Data Providers → **+** → **XMLTV**. File or URL:
-`/xmltv/guide.xml`. Save. The playlist and the guide use the same channel ids, so Jellyfin matches
-them by itself. Channels without a known guide show "No information"; they still play.
-
-Then Dashboard → Scheduled Tasks → **Refresh Guide** → run. After that, Jellyfin re-reads the file
-on its own every day. Live TV shows up on the home page with a **Guide** tab.
-
-**g. Optional: an XMLTV grabber.** A *grabber* is an XMLTV program that builds a guide when nobody
-publishes one as a file. You'd only need this if you add an antenna and an HDHomeRun later for local
-channels. In the US that's `tv_grab_zz_sdjson`, which reads
-[Schedules Direct](https://www.schedulesdirect.org) (about $35 a year). Set `XMLTV_GRABBER=tv_grab_zz_sdjson`
-in `.env`, then run its setup once and follow the prompts:
-
-```sh
-docker compose run --rm xmltv tv_grab_zz_sdjson --configure
-```
-
-Then `docker compose up -d xmltv`. Its listings are stapled in with the others.
-
-**Updates:** this container is built here rather than downloaded, so `docker compose pull` skips
-it. Every few months, rebuild it with the latest XMLTV from Debian:
-
-```sh
-docker compose build --pull xmltv && docker compose up -d xmltv
-```
-
-### 23. Alerts on your phone, and a look inside from anywhere (Uptime Kuma + ntfy + Tailscale)
+### 22. Alerts on your phone, and a look inside from anywhere (Uptime Kuma + ntfy + Tailscale)
 
 Grafana is great for looking back, but you have to go and look. This step adds a night watchman who
 does the rounds every minute and phones you the moment something's wrong, with what's wrong:
@@ -1393,14 +1290,14 @@ docker compose down            # stop everything (your settings and files stay)
   **Query log**, search `speedtest`, and click **Unblock** on any red line. One slow result is normal;
   a slow pattern at the same hour usually means someone is busy downloading then.
 - **Uptime Kuma says a Docker check can't connect:** the Docker host must be `http://dockerproxy:2375`
-  with type TCP / HTTP (step 23d), and `docker compose ps dockerproxy` should say `Up`.
+  with type TCP / HTTP (step 22d), and `docker compose ps dockerproxy` should say `Up`.
 - **The health checks say "no result" or the value is missing:** Prometheus hasn't loaded the rules.
   `docker compose restart prometheus`, then `docker logs prometheus --tail 20` names any problem.
 - **No buzz on your phone:** in ntfy check the topic matches step c exactly, and that notifications are
   allowed for ntfy in your phone's settings. Uptime Kuma's **Test** button in the notification settings
   sends one straight away.
 - **The 192.168.1.95 addresses don't open away from home:** Tailscale must be on in the phone app, and
-  the `192.168.1.95/32` route approved in the Tailscale admin page (step 23g). `tailscale status` on
+  the `192.168.1.95/32` route approved in the Tailscale admin page (step 22g). `tailscale status` on
   the server should list your phone.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.

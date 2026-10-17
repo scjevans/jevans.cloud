@@ -1,6 +1,6 @@
 # Health checks, worked out by Prometheus every 30 seconds from the readings it already keeps.
 # Each one boils a question down to a single number, so Uptime Kuma only has to ask
-# "is it still 0?" (or "still 1?") and buzz your phone when it isn't. See README.md step 23.
+# "is it still 0?" (or "still 1?") and buzz your phone when it isn't. See README.md step 22.
 # Like a nurse's chart: the machines take the readings, these lines are the "call the doctor if..." notes.
 groups:
   - name: health
