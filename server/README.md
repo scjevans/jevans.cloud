@@ -21,7 +21,7 @@ Think of it as a small restaurant:
 | **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 | **JellyDash** | 3002 | Shows what's playing right now and keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
-| **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
+| **Beszel** | 3003 | Charts of the server's health (CPU, memory, drives, temperature, and what each app uses), and alerts on your phone when disk, heat or memory cross a line | The gauges on the kitchen wall, with an alarm on the fridge |
 | **Uptime Kuma** | 3004 | Checks every app and the server's health each minute, and sends a push notification to your phone when something breaks (step 22) | The night manager who phones you if the freezer stops |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
 | **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
@@ -79,7 +79,7 @@ cd jevans.cloud/server
 sudo mkdir -p /data/torrents/{movies,tv} /data/usenet/incomplete /data/usenet/complete/{movies,tv} /data/media/{movies,tv} /opt/media/config
 sudo chown -R $USER:$USER /data /opt/media
 mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
-mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
+mkdir -p /opt/media/config/beszel/data /opt/media/config/beszel/socket /opt/media/config/beszel-agent
 ```
 
 Seerr always runs as user 1000 inside its container, so its folder belongs to 1000 whatever your own ID is.
@@ -643,86 +643,126 @@ Skip the theme's "Spotlight" add-on and its installer. Spotlight is its own home
 Media Bar already does, and it works by editing files inside the Jellyfin container that are replaced
 on every update.
 
-### 16. Server health charts (Grafana)
+### 16. Server health charts and alerts (Beszel)
 
-Homepage tells you whether each app is running. Grafana tells you *how the server is doing*, and how it
-was doing last Tuesday at 9pm. Think of a car: the engine has sensors, a logbook writes down what they
-read every 30 seconds, and the dashboard turns the logbook into gauges and charts. Here that's four
-containers:
+Homepage tells you whether each app is running. Beszel tells you *how the server is doing*, how it was
+doing last Tuesday at 9pm, and buzzes your phone when a number crosses a line. Think of a fitness tracker:
+a sensor on your wrist takes the readings, and an app on your phone keeps the history, draws the charts
+and nudges you when your heart rate is too high. Here that's two containers:
 
-| Container | Car part | What it does |
-| --------- | -------- | ------------ |
-| `node-exporter` | Engine sensors | Reads the PC itself: CPU, memory, how full each drive is, temperatures, network |
-| `cadvisor` | Sensors on each passenger | Reads every container: how much CPU, memory and network each app uses |
-| `prometheus` | The logbook | Asks both sensors for their numbers every 30 seconds and keeps 30 days of them |
-| `grafana` | The dashboard | Draws the charts. The only one you open: `http://192.168.1.95:3003` |
+| Container | Fitness-tracker part | What it does |
+| --------- | -------------------- | ------------ |
+| `beszel-agent` | The wristband | Reads the PC itself (CPU, memory, both drives, temperatures, network) and every container (how much CPU, memory and network each app uses) |
+| `beszel` | The phone app | Keeps the history, draws the charts, sends the alerts. The only one you open: `http://192.168.1.95:3003` |
 
 It's home only, like JellyDash: no Caddy site and no port forwarding, so nobody outside the house can
-see it. Grafana comes already plugged into Prometheus, with a ready-made **Media server** dashboard (it's
-in `grafana/dashboards/server.json`), so there's nothing to wire up.
+see it (away from home, Tailscale gets you in, step 22h). The two talk through a small file on the
+server (a "socket"), a bit like a pneumatic tube between two rooms, so the agent doesn't open a port either.
+Together they use a fraction of the memory the old Grafana + Prometheus set did.
 
-**a. Get the new files.**
-
-```sh
-cd ~/jevans.cloud && git pull
-```
-
-**b. Make its folders.** Grafana and Prometheus run as you, so they need folders you own. If Docker made
-them instead, they'd belong to root and the two apps couldn't save anything.
+**a. Get the new files and start the hub.**
 
 ```sh
-mkdir -p /opt/media/config/grafana /opt/media/config/prometheus
-```
-
-**c. Make a password.** This adds a random password for Grafana's `admin` login to your `.env`. Run it once:
-
-```sh
-echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 12)" >> ~/jevans.cloud/server/.env
-```
-
-Then show it, so you can copy it for the first login:
-
-```sh
-grep GRAFANA ~/jevans.cloud/server/.env
-```
-
-**d. Start it.**
-
-```sh
-cd ~/jevans.cloud/server && docker compose up -d
+cd ~/jevans.cloud && git pull && mkdir -p /opt/media/config/beszel/data /opt/media/config/beszel/socket /opt/media/config/beszel-agent
 ```
 
 ```sh
-docker compose ps grafana prometheus node-exporter cadvisor
+cd ~/jevans.cloud/server && docker compose up -d beszel
 ```
 
-All four should say `Up` (or `running`).
+**b. Make your login.** On a computer at home, open `http://192.168.1.95:3003` and make an account
+(email and password; save them in Vaultwarden). The email is only a username: nothing is sent to it.
 
-**e. Open it.** Go to `http://192.168.1.95:3003`, log in as `admin` with the password from step c. It
-opens on the **Media server** dashboard. Give it a few minutes: charts need a few readings before they
-draw a line. What's on it:
+**c. Add the server.** Click **Add System** top right, and fill in:
 
-- **Top row:** CPU, memory, both drives, the hottest temperature sensor, and how long since the last
-  restart. Green is fine, orange means keep an eye on it, red means look now.
-- **The server:** CPU and memory over time, network traffic, drive activity (`sda` is the system SSD,
-  `sdb` the media drive), and free space.
-- **The apps:** CPU, memory, download and upload per container. Torrent downloads show up as
-  `VPN: qBittorrent + Prowlarr`, because both borrow gluetun's connection. Jellyfin's upload going up
-  means someone is streaming. `node-exporter` and `jellyfin-discovery` aren't on the traffic charts:
-  they sit on the server's own network, so they'd show the whole server's traffic under their name.
-  The server's real total is the **Internet and home network traffic** chart in the row above.
+- **Name:** `jevans-server`
+- **Host / IP:**
 
-Change the time range top right (Last 6 hours, Last 7 days...). Click a name under a chart to show
-just that app.
+  ```
+  /beszel_socket/beszel.sock
+  ```
 
-**Want more detail?** Grafana's community shares dashboards you can add in a few clicks. The most
-popular one for the server itself is **Node Exporter Full**: Dashboards → **New** → **Import**, type
-`1860`, **Load**, pick **Prometheus** at the bottom, **Import**. It has a page for nearly every number
-the server reports.
+Leave the box open. It shows a `docker-compose.yml` with two lines you need: `KEY` (starts with
+`ssh-ed25519`) and `TOKEN`. In another window, on the server, open your settings:
 
-The **Media server** dashboard comes from the repo, so changes you make to it in the browser are
-replaced the next time Grafana restarts. To build your own, use **New** → **New dashboard**, or on
-the Media server dashboard use **Save as** to make your own copy.
+```sh
+nano ~/jevans.cloud/server/.env
+```
+
+Fill in the two Beszel lines with those values, keeping single quotes around the key:
+
+```
+BESZEL_AGENT_KEY='ssh-ed25519 AAAA...'
+BESZEL_AGENT_TOKEN=...
+```
+
+Save (Ctrl+O, Enter, Ctrl+X), then start the agent, and the new Homepage tile:
+
+```sh
+docker compose up -d --remove-orphans && docker compose restart homepage
+```
+
+Back in the browser, click **Add System** in the box. The server turns green within a minute.
+(`--remove-orphans` also stops and removes Grafana, Prometheus, node-exporter and cAdvisor if you had
+them; step g tidies up after them.)
+
+**d. Look around.** Click **jevans-server**. Charts need a few minutes of readings before they draw a line.
+
+- **Top:** CPU, memory, disk, network, temperatures, and how long since the last restart.
+- **Disk:** the system SSD, plus a separate **Media** chart for the media drive, each with free space
+  and read/write speed. If **Media** shows space but no read/write speed, run `lsblk` on the server:
+  the media drive's partition (the one mounted at `/data`) probably isn't called `sdb1`. Change `sdb1`
+  in `docker-compose.yml` to its name and `docker compose up -d beszel-agent`.
+- **Docker:** CPU, memory and network per container. Torrent traffic shows up under `gluetun`, because
+  qBittorrent and Prowlarr borrow its connection. Jellyfin's upload going up means someone is streaming.
+
+Change the time range top right (1 hour up to 30 days).
+
+**e. Tell it about your phone.** Beszel sends alerts to the same ntfy channel as Uptime Kuma (step 22c).
+If you've lost your topic name, it's in the ntfy app, and in Uptime Kuma under Settings →
+Notifications → My phone. In Beszel click your account top right → **Settings** → **Notifications** →
+**Add URL**, and paste this with your topic at the end:
+
+```
+ntfy://ntfy.sh/jevans-3f9a1c0e7b2d4a56?priority=high
+```
+
+Click **Test URL** (your phone should buzz), then **Save Settings**.
+
+**f. Set the alarm lines.** Back on the main page, click the bell 🔔 on the **jevans-server** row and
+turn these on:
+
+| Alert | Set it to | Means |
+| ----- | --------- | ----- |
+| **Status** | on | The agent stopped reporting |
+| **Disk Usage** | `90%` | The SSD or the media drive is over 90% full |
+| **Memory Usage** | `95%` | Less than 5% of memory is free |
+| **Temperature** | `85°C` | The hottest sensor (CPU or drive) is over 85°C |
+
+Leave the time at 1 minute, so a short spike doesn't wake you. You get a second message when it's back
+to normal. These replace the "Drives", "Temperatures" and "Memory" checks Uptime Kuma used to do.
+Whether the media drive is *plugged in* at all stays with Uptime Kuma (step 22e), because Beszel can
+only tell you how full a drive is, not that it's gone.
+
+**g. If you had Grafana before: tidy up.** Its charts, logins and history were in two folders that are
+no longer used. Delete them, and the four old programs:
+
+```sh
+sudo rm -rf /opt/media/config/grafana /opt/media/config/prometheus
+```
+
+```sh
+docker image rm grafana/grafana prom/prometheus prom/node-exporter ghcr.io/google/cadvisor:v0.60.6
+```
+
+If you ever opened port 9100 in the firewall for Grafana, close it again:
+`sudo ufw delete allow from 172.16.0.0/12 to any port 9100`. And remove `GRAFANA_ADMIN_PASSWORD`
+from `.env` with `nano ~/jevans.cloud/server/.env`.
+
+In Uptime Kuma, delete the four "health" monitors that asked Prometheus (**Drives under 90% full**,
+**Media drive plugged in**, **Temperatures OK**, **Memory OK**): click each → **Delete**. Then follow
+step 22e's new "Is the media drive plugged in?" part, and add `beszel` and `beszel-agent` as two more
+Docker Container monitors.
 
 ### 17. Your own password safe (Vaultwarden)
 
@@ -1103,21 +1143,17 @@ The collection then shows up under Movies → **Collections**, and in the Collec
 
 ### 22. Alerts on your phone, and a look inside from anywhere (Uptime Kuma + ntfy + Tailscale)
 
-Grafana is great for looking back, but you have to go and look. This step adds a night watchman who
-does the rounds every minute and phones you the moment something's wrong, with what's wrong:
+Beszel (step 16) watches the numbers: disk space, heat, memory. This step adds a night watchman who
+does the rounds every minute and phones you the moment an app stops, with what's wrong:
 
 | Piece | Job | Like |
 | ----- | --- | ---- |
-| **Uptime Kuma** (container, port 3004) | Checks every app, the VPN, the drives, temperatures and memory once a minute | The night watchman with a checklist |
-| **ntfy** (free app on your phone) | Delivers Uptime Kuma's "Jellyfin is down" and "Jellyfin is back" messages as push notifications | The watchman's pager |
+| **Uptime Kuma** (container, port 3004) | Checks every app, the VPN and the media drive once a minute | The night watchman with a checklist |
+| **ntfy** (free app on your phone) | Delivers Uptime Kuma's (and Beszel's) "Jellyfin is down" and "Jellyfin is back" messages as push notifications | The watchman's pager |
 | **Tailscale** (on the server and your phone) | A private tunnel from your phone to the server, so every home-only page works away from home | A key to the back door that only your phone has |
 
 Nothing new is opened to the internet: no port forwarding, no Caddy site. Tailscale is the same kind
 of encrypted WireGuard tunnel as your Mullvad VPN, just between your own devices.
-
-The server-health checks (drives, temperature, memory) are written down in
-`prometheus/health-rules.yml`. Prometheus works each one out every 30 seconds into a single number, so
-Uptime Kuma only asks "is it still 0?".
 
 **a. Get the new files, make the folder, start it.**
 
@@ -1126,10 +1162,10 @@ cd ~/jevans.cloud && git pull && mkdir -p /opt/media/config/uptime-kuma
 ```
 
 ```sh
-cd ~/jevans.cloud/server && docker compose up -d && docker compose restart prometheus homepage
+cd ~/jevans.cloud/server && docker compose up -d && docker compose restart homepage
 ```
 
-Prometheus and Homepage restart so they pick up the health rules and the new tile.
+Homepage restarts so it picks up the new tile.
 
 **b. Make your Uptime Kuma login.** On a computer at home, open `http://192.168.1.95:3004`. If it asks
 which database to use, pick **SQLite**. Then make a username and password (save them in Vaultwarden).
@@ -1167,7 +1203,8 @@ gluetun
 ```
 
 then the same again for each of these (one monitor each): `jellyfin`, `qbittorrent`, `prowlarr`,
-`sonarr`, `radarr`, `sabnzbd`, `bazarr`, `seerr`, `jellydash`, `caddy`, `adguard`, `vaultwarden`, `homepage`.
+`sonarr`, `radarr`, `sabnzbd`, `bazarr`, `seerr`, `jellydash`, `caddy`, `adguard`, `vaultwarden`, `homepage`,
+`beszel`, `beszel-agent`.
 
 The `gluetun` one doubles as your VPN alarm: Gluetun tells Docker it's unhealthy when the tunnel drops,
 and Uptime Kuma passes that on. (qBittorrent and Prowlarr have no internet then, by design.)
@@ -1183,19 +1220,30 @@ http://jellyfin:8096/health
 Healthy
 ```
 
-*Is the server healthy?* Monitor type **HTTP(s) - Json Query**. For each row, set the name, paste the
-URL, set **Json Query Expression** to `data.result[0].value[1]`, the condition to `==`, and
-**Expected Value** to the number in the last column:
+*Is the media drive plugged in?* This one matters most: the media drive is a USB drive, and if it
+ever drops off, `/data` quietly becomes an empty folder on the small SSD and the apps start filling
+that instead. Here the server checks itself and "presses a button" in Uptime Kuma once a minute; if
+the presses stop, your phone buzzes. Like a dead man's switch on a train.
 
-| Friendly name | URL | Expected value |
-| ------------- | --- | -------------- |
-| Drives under 90% full | `http://prometheus:9090/api/v1/query?query=health:drives_over_90_percent` | `0` |
-| Media drive plugged in | `http://prometheus:9090/api/v1/query?query=health:media_drive_mounted` | `1` |
-| Temperatures OK | `http://prometheus:9090/api/v1/query?query=health:sensors_over_85c` | `0` |
-| Memory OK | `http://prometheus:9090/api/v1/query?query=health:memory_almost_full` | `0` |
+1. **Add New Monitor**, type **Push**, name `Media drive plugged in`, **Heartbeat Interval** `120`
+   (two missed minutes before it worries). Copy the **Push URL** it shows, then **Save**.
+2. On the server, put that URL in `.env` (`nano ~/jevans.cloud/server/.env`), on the
+   `MEDIA_DRIVE_PUSH_URL=` line, inside single quotes:
 
-"Media drive plugged in" matters most: the media drive is a USB drive, and if it ever drops off, `/data`
-quietly becomes an empty folder on the small SSD.
+   ```
+   MEDIA_DRIVE_PUSH_URL='http://192.168.1.95:3004/api/push/AbC123?status=up&msg=OK&ping='
+   ```
+
+3. Tell the server to run the check every minute (this adds one line to your scheduled jobs, "cron"):
+
+   ```sh
+   ( crontab -l 2>/dev/null; echo "* * * * * $HOME/jevans.cloud/server/scripts/check-media-drive.sh" ) | crontab -
+   ```
+
+Within two minutes the monitor turns green. The script is `scripts/check-media-drive.sh`: it only
+presses when `/data` is mounted and the drive behind it still exists.
+
+Disk space, temperatures and memory are Beszel's job (step 16f).
 
 **f. A one-glance page.** **Status Pages** → **New Status Page**, name `Server`, slug:
 
@@ -1235,7 +1283,7 @@ http://192.168.1.95:3004
 ```
 
 That's Uptime Kuma. The same way, `http://192.168.1.95:3000` is Homepage and `http://192.168.1.95:3003`
-is Grafana, wherever you are. (`home.jevans.cloud` and `vault.jevans.cloud` stay home-Wi-Fi only; use
+is Beszel, wherever you are. (`home.jevans.cloud` and `vault.jevans.cloud` stay home-Wi-Fi only; use
 the number addresses away from home.)
 
 **When your phone buzzes,** the message names the check. Tap it in Uptime Kuma to see when it broke and
@@ -1247,7 +1295,7 @@ the error it got. Then:
 - **gluetun:** `docker logs gluetun --tail 50`. Often Mullvad is just having a moment, and it reconnects
   on its own within a few minutes.
 - **Media drive:** check the USB cable and power, then `sudo mount -a` and `docker compose restart`.
-- **Drives, temperature, memory:** open Grafana for which drive or app it is.
+- **Drives, temperature, memory (from Beszel):** open Beszel for which drive or app it is.
 
 ## Everyday commands
 
@@ -1267,12 +1315,12 @@ docker compose down            # stop everything (your settings and files stay)
   host_whitelist.
 - **Can't open qBittorrent/Prowlarr from another device at home:** check `LAN_SUBNET` in `.env` matches
   your network, then `docker compose up -d` again.
-- **Grafana's top-row and "The server" charts say "No data", but the per-app ones work:** Prometheus
-  can't reach node-exporter. Run `sudo ufw status`: if it says `active`, let containers in with
-  `sudo ufw allow from 172.16.0.0/12 to any port 9100`.
-- **Grafana or Prometheus keeps restarting with "permission denied":** their folder belongs to root.
-  `sudo chown -R $USER:$USER /opt/media/config/grafana /opt/media/config/prometheus`, then
-  `docker compose up -d`.
+- **Beszel's server stays red or "pending":** check `docker logs beszel-agent --tail 20`. "invalid key"
+  or "unauthorized" means `BESZEL_AGENT_KEY` or `BESZEL_AGENT_TOKEN` in `.env` doesn't match the
+  hub's **Add System** box (click the row's ⋮ → **Copy docker compose** to see them again); fix them and
+  `docker compose up -d beszel-agent`. The Host / IP must be `/beszel_socket/beszel.sock`.
+- **Beszel shows no temperatures:** the server may need its sensor tools. `sudo apt install lm-sensors`,
+  `sudo sensors-detect --auto`, then `docker compose restart beszel-agent`.
 - **Jellyfin apps at home don't list the server on their own:** check the finder is running with
   `docker logs jellyfin-discovery`, and `sudo ufw allow 7359/udp` if `sudo ufw status` says `active`.
   The server they find is `https://media.jevans.cloud`, which works at home thanks to AdGuard's DNS
@@ -1294,8 +1342,10 @@ docker compose down            # stop everything (your settings and files stay)
   a slow pattern at the same hour usually means someone is busy downloading then.
 - **Uptime Kuma says a Docker check can't connect:** the Docker host must be `http://dockerproxy:2375`
   with type TCP / HTTP (step 22d), and `docker compose ps dockerproxy` should say `Up`.
-- **The health checks say "no result" or the value is missing:** Prometheus hasn't loaded the rules.
-  `docker compose restart prometheus`, then `docker logs prometheus --tail 20` names any problem.
+- **"Media drive plugged in" is red but the drive is fine:** run the check by hand,
+  `~/jevans.cloud/server/scripts/check-media-drive.sh && echo pressed`. No `pressed` and no error means
+  `MEDIA_DRIVE_PUSH_URL` is empty in `.env`, or `findmnt /data` shows nothing. `crontab -l` should list
+  the line from step 22e.
 - **No buzz on your phone:** in ntfy check the topic matches step c exactly, and that notifications are
   allowed for ntfy in your phone's settings. Uptime Kuma's **Test** button in the notification settings
   sends one straight away.
