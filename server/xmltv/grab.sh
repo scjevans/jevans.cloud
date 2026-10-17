@@ -1,6 +1,6 @@
 #!/bin/sh
 # Fetches the TV guide on a timer, like a paperboy dropping off a fresh TV listings page.
-# Collects every guide it's given, staples them into one file with XMLTV's tv_cat,
+# Collects every guide it's given, staples them into one file with XMLTV's own Perl library (merge.pl),
 # and leaves /config/guide/guide.xml for Jellyfin (README.md step 22).
 
 URLS="${XMLTV_GUIDE_URLS:-}"
@@ -52,7 +52,7 @@ while true; do
   # 3. Staple the pieces into one guide. Write a spare file first, so Jellyfin never reads half a guide.
   set -- "$PARTS"/*.xml
   if [ -f "$1" ]; then
-    if tv_cat --output /config/guide/guide.xml.new "$@"; then
+    if perl /usr/local/bin/merge.pl /config/guide/guide.xml.new "$@"; then
       mv /config/guide/guide.xml.new /config/guide/guide.xml
       echo "Guide updated from $# source(s). Next update in $EVERY hours."
     else
