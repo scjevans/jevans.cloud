@@ -24,7 +24,7 @@ Think of it as a small restaurant:
 | **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
 | **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
-| **XMLTV** | | Fetches the TV guide (what's on each channel, and when) for Jellyfin's free live TV channels (step 22) | The paperboy with the TV listings |
+| **XMLTV** + **iptv-epg** | | Build and deliver the TV guide (what's on each channel, and when) for Jellyfin's free live TV channels (step 22) | The reporter who collects the TV listings, and the paperboy who delivers them |
 
 ### Why the tunnel matters
 
@@ -79,7 +79,7 @@ cd jevans.cloud/server
 sudo mkdir -p /data/torrents/{movies,tv} /data/usenet/incomplete /data/usenet/complete/{movies,tv} /data/media/{movies,tv} /opt/media/config
 sudo chown -R $USER:$USER /data /opt/media
 mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
-mkdir -p /opt/media/config/grafana /opt/media/config/prometheus /opt/media/config/xmltv/guide
+mkdir -p /opt/media/config/grafana /opt/media/config/prometheus /opt/media/config/xmltv/guide /opt/media/config/xmltv/iptv-org
 ```
 
 Seerr always runs as user 1000 inside its container, so its folder belongs to 1000 whatever your own ID is.
@@ -987,96 +987,6 @@ the move is instant. Nobody needs to seed a Usenet file, so the copy in `usenet/
 
 The dashboard's **SABnzbd** tile is under Download.
 
-### 22. Live TV with a TV guide (XMLTV)
-
-Jellyfin can play live TV channels too, and show a grid of what's on, like a cable box. That
-takes two things, and they're separate jobs:
-
-| Piece | Job | Like |
-| ----- | --- | ---- |
-| **An M3U playlist** | The list of channels and where to stream each one from | The TV aerial |
-| **A guide (XMLTV)** | What's on each channel, and when | The TV listings page in the newspaper |
-
-Fios TV's own channels are locked to Verizon's boxes, so they can't feed Jellyfin. Free,
-ad-supported internet channels can: **Pluto TV** and **Samsung TV Plus** have hundreds of
-channels (news, old sitcoms, game shows, films). [i.mjh.nz](https://i.mjh.nz) publishes each one as
-an M3U playlist plus a matching guide file. Those guide files are written in **XMLTV**, the standard
-format for TV listings.
-
-The `xmltv` container is the paperboy. Every 12 hours it fetches each guide in `XMLTV_GUIDE_URLS`,
-staples them into one file with XMLTV's own Perl library, and leaves `guide.xml` where Jellyfin can
-read it. If a guide's website is down, it keeps the last copy, so your grid doesn't go blank.
-
-**a. Get the new files.**
-
-```sh
-cd ~/jevans.cloud && git pull
-```
-
-**b. Add the guide links to `.env`.** Open it with `nano ~/jevans.cloud/server/.env` and paste
-these lines at the bottom (they're also at the end of `.env.example`):
-
-```sh
-XMLTV_GUIDE_URLS=https://i.mjh.nz/PlutoTV/us.xml.gz https://i.mjh.nz/SamsungTVPlus/us.xml.gz
-XMLTV_GRABBER=
-```
-
-If you add another playlist later, put its guide link on the same line, with a space in between.
-
-**c. Build and start it.** It's built here from Debian's XMLTV package, using the `xmltv/` folder
-next to the compose file.
-
-```sh
-mkdir -p /opt/media/config/xmltv/guide
-```
-
-```sh
-cd ~/jevans.cloud/server && docker compose build xmltv && docker compose up -d
-```
-
-```sh
-docker logs -f xmltv
-```
-
-Wait for `Guide updated from 2 source(s)`, then Ctrl+C. The guide is now at
-`/opt/media/config/xmltv/guide/guide.xml`, and Jellyfin sees the same file as `/xmltv/guide.xml`.
-
-**d. Add the playlists in Jellyfin:** Dashboard → Live TV → Tuner Devices → **+**. Tuner type
-**M3U Tuner**, and in File or URL paste:
-
-- `https://i.mjh.nz/PlutoTV/us.m3u8`
-
-Save. Click + again and add `https://i.mjh.nz/SamsungTVPlus/us.m3u8` the same way.
-
-**e. Add the guide:** same page, TV Guide Data Providers → **+** → **XMLTV**. File or URL:
-`/xmltv/guide.xml`. Leave the rest as it is and Save. The playlists and the guide use the same
-channel names, so Jellyfin matches them up by itself. If a channel shows "No information", use
-the provider's **Map Channels** button to match it by hand.
-
-**f. Fill the grid:** Dashboard → Scheduled Tasks → **Refresh Guide** → run. After that,
-Jellyfin re-reads the file on its own every day.
-
-Live TV then shows up on the home page with a **Guide** tab. You can record from the guide too;
-recordings go to the folder set under Live TV → DVR.
-
-**g. Optional: an XMLTV grabber.** A *grabber* is an XMLTV program that builds a guide when nobody
-publishes one as a file. You'd only need this if you add an antenna and an HDHomeRun later for local
-channels. In the US that's `tv_grab_zz_sdjson`, which reads
-[Schedules Direct](https://www.schedulesdirect.org) (about $35 a year). Set `XMLTV_GRABBER=tv_grab_zz_sdjson`
-in `.env`, then run its setup once and follow the prompts:
-
-```sh
-docker compose run --rm xmltv tv_grab_zz_sdjson --configure
-```
-
-Then `docker compose up -d xmltv`. Its listings are stapled in with the others.
-
-**Updates:** this container is built here rather than downloaded, so `docker compose pull` skips
-it. Every few months, rebuild it with the latest XMLTV from Debian:
-
-```sh
-docker compose build --pull xmltv && docker compose up -d xmltv
-```
 ### 21. Netflix-style rows (Action, Comedy, Oscar winners)
 
 Out of the box, Jellyfin's home page is like a video shop with one shelf per library: "Latest Movies",
@@ -1145,6 +1055,107 @@ The collection then shows up under Movies → **Collections**, and in the Collec
   Make it a collection (Movies → select films → ⋮ → Add to collection) and it joins the Collections
   row. The separate "Collection Sections" plugin, which gives each collection a row of its own, isn't
   out for Jellyfin 12 yet.
+
+### 22. Live TV with a TV guide (XMLTV)
+
+Jellyfin can play live TV channels too, and show a grid of what's on, like a cable box. That
+takes two things, and they're separate jobs:
+
+| Piece | Job | Like |
+| ----- | --- | ---- |
+| **An M3U playlist** | The list of channels and where to stream each one from | The TV aerial |
+| **A guide (XMLTV)** | What's on each channel, and when | The TV listings page in the newspaper |
+
+Fios TV's own channels are locked to Verizon's boxes, so they can't feed Jellyfin. Free internet
+channels can. [iptv-org](https://github.com/iptv-org/iptv) keeps a public M3U playlist of the free
+streams that TV stations and channels put online themselves: around a thousand US ones (local news,
+weather, sports, old shows). The list is maintained by volunteers, so expect some channels to be dead
+or slow on any given day.
+
+Nobody publishes a ready-made guide for those channels, so this takes two containers working together:
+
+| Container | Job | Like |
+| --------- | --- | ---- |
+| **xmltv** | Every 6 hours, reads the playlist, writes a list of which website has each channel's listings, and delivers the finished guide to Jellyfin | The paperboy, who also hands the reporter a list of stations to call |
+| **iptv-epg** | Twice a day, visits those websites and writes down 3 days of what's on | The reporter phoning each station for its schedule |
+
+Guides are written in **XMLTV**, the standard format for TV listings. `xmltv` keeps the last good
+guide if a run fails, so your grid doesn't go blank.
+
+**a. Get the new files.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+**b. Add the playlist to `.env`.** Open it with `nano ~/jevans.cloud/server/.env`. Delete any
+`XMLTV_` lines already at the bottom, then paste these (they're also at the end of `.env.example`):
+
+```sh
+XMLTV_PLAYLISTS=https://iptv-org.github.io/iptv/countries/us.m3u
+XMLTV_GUIDE_URLS=
+XMLTV_GRABBER=
+```
+
+Ctrl+O, Enter to save, Ctrl+X to close.
+
+**c. Make the folders, then start xmltv first** so the station list exists before iptv-epg looks for it:
+
+```sh
+mkdir -p /opt/media/config/xmltv/guide /opt/media/config/xmltv/iptv-org
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose build xmltv && docker compose up -d xmltv && docker logs -f xmltv
+```
+
+Wait for a line like `1000 channels in the playlists, 600 with a known guide`, then Ctrl+C. (It
+then says `No guide yet`. That's expected: the reporter hasn't been out yet.)
+
+**d. Start iptv-epg and let it build the first guide:**
+
+```sh
+docker compose up -d && docker logs -f iptv-epg
+```
+
+The first run visits hundreds of websites and can take an hour or more. It's finished when the log
+stops growing and `ls -lh /opt/media/config/xmltv/iptv-org` shows a `guide.xml`. Ctrl+C, then hand the guide to the paperboy now
+instead of waiting 6 hours:
+
+```sh
+docker compose restart xmltv && docker logs -f xmltv
+```
+
+Wait for `Guide updated from 1 source(s)`, then Ctrl+C. Jellyfin sees the guide as `/xmltv/guide.xml`.
+
+**e. Add the playlist in Jellyfin:** Dashboard → Live TV → Tuner Devices → **+**. Tuner type
+**M3U Tuner**, File or URL `https://iptv-org.github.io/iptv/countries/us.m3u`. Leave the rest and Save.
+
+**f. Add the guide:** same page, TV Guide Data Providers → **+** → **XMLTV**. File or URL:
+`/xmltv/guide.xml`. Save. The playlist and the guide use the same channel ids, so Jellyfin matches
+them by itself. Channels without a known guide show "No information"; they still play.
+
+Then Dashboard → Scheduled Tasks → **Refresh Guide** → run. After that, Jellyfin re-reads the file
+on its own every day. Live TV shows up on the home page with a **Guide** tab.
+
+**g. Optional: an XMLTV grabber.** A *grabber* is an XMLTV program that builds a guide when nobody
+publishes one as a file. You'd only need this if you add an antenna and an HDHomeRun later for local
+channels. In the US that's `tv_grab_zz_sdjson`, which reads
+[Schedules Direct](https://www.schedulesdirect.org) (about $35 a year). Set `XMLTV_GRABBER=tv_grab_zz_sdjson`
+in `.env`, then run its setup once and follow the prompts:
+
+```sh
+docker compose run --rm xmltv tv_grab_zz_sdjson --configure
+```
+
+Then `docker compose up -d xmltv`. Its listings are stapled in with the others.
+
+**Updates:** this container is built here rather than downloaded, so `docker compose pull` skips
+it. Every few months, rebuild it with the latest XMLTV from Debian:
+
+```sh
+docker compose build --pull xmltv && docker compose up -d xmltv
+```
 
 ## Everyday commands
 
