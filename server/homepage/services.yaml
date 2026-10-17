@@ -15,12 +15,12 @@
         description: Request movies and shows
         server: docker
         container: seerr
-    - Jellystat:
-        icon: jellystat.png
+    - JellyDash:
+        icon: mdi-chart-box
         href: http://{{HOMEPAGE_VAR_SERVER_IP}}:3002
         description: Who watched what
         server: docker
-        container: jellystat
+        container: jellydash
 
 - Find:
     - Sonarr:
