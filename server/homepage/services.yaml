@@ -85,6 +85,17 @@
         description: Server health charts
         server: docker
         container: grafana
+    - Uptime Kuma:
+        icon: uptime-kuma.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:3004
+        description: Checks every app, buzzes your phone if one breaks
+        server: docker
+        container: uptime-kuma
+        widget:
+          type: uptimekuma
+          url: http://uptime-kuma:3001
+          # The status page made in README.md step 23f.
+          slug: server
     - Vaultwarden:
         icon: vaultwarden.png
         href: https://vault.jevans.cloud
