@@ -1004,7 +1004,7 @@ an M3U playlist plus a matching guide file. Those guide files are written in **X
 format for TV listings.
 
 The `xmltv` container is the paperboy. Every 12 hours it fetches each guide in `XMLTV_GUIDE_URLS`,
-staples them into one file with XMLTV's `tv_cat` tool, and leaves `guide.xml` where Jellyfin can
+staples them into one file with XMLTV's own Perl library, and leaves `guide.xml` where Jellyfin can
 read it. If a guide's website is down, it keeps the last copy, so your grid doesn't go blank.
 
 **a. Get the new files.**
