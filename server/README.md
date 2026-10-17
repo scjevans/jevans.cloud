@@ -1078,7 +1078,7 @@ Nobody publishes a ready-made guide for those channels, so this takes two contai
 | Container | Job | Like |
 | --------- | --- | ---- |
 | **xmltv** | Every 6 hours, reads the playlist, writes a list of which website has each channel's listings, and delivers the finished guide to Jellyfin | The paperboy, who also hands the reporter a list of stations to call |
-| **iptv-epg** | Once a day at 2 AM, visits those websites and writes down 2 days of what's on | The reporter phoning each station for its schedule |
+| **iptv-epg** | Once a day at 2 AM, visits those websites 50 channels at a time and writes down 2 days of what's on | The reporter phoning each station for its schedule, one batch of calls at a time |
 
 Guides are written in **XMLTV**, the standard format for TV listings. `xmltv` keeps the last good
 guide if a run fails, so your grid doesn't go blank.
@@ -1110,7 +1110,7 @@ mkdir -p /opt/media/config/xmltv/guide /opt/media/config/xmltv/iptv-org
 cd ~/jevans.cloud/server && docker compose build xmltv && docker compose up -d xmltv && docker logs -f xmltv
 ```
 
-Wait for a line like `1000 channels in the playlists, 600 with a known guide`, then Ctrl+C. (It
+Wait for a line like `1000 channels in the playlists, 600 with a known guide, in 12 batches`, then Ctrl+C. (It
 then says `No guide yet`. That's expected: the reporter hasn't been out yet.)
 
 **d. Start iptv-epg and let it build the first guide:**
@@ -1119,15 +1119,16 @@ then says `No guide yet`. That's expected: the reporter hasn't been out yet.)
 docker compose up -d && docker logs -f iptv-epg
 ```
 
-The first run visits hundreds of websites and can take an hour or more. It's finished when the log
-stops growing and `ls -lh /opt/media/config/xmltv/iptv-org` shows a `guide.xml`. Ctrl+C, then hand the guide to the paperboy now
+The first run visits hundreds of websites and can take an hour or more. It works through the
+channels in batches (`Batch 1 of 12...`), because doing them all at once runs out of memory. It's
+finished when the log says `All 12 batches done`. Ctrl+C, then hand the guide to the paperboy now
 instead of waiting 6 hours:
 
 ```sh
 docker compose restart xmltv && docker logs -f xmltv
 ```
 
-Wait for `Guide updated from 1 source(s)`, then Ctrl+C. Jellyfin sees the guide as `/xmltv/guide.xml`.
+Wait for `Guide updated from 12 source(s)` (one per batch), then Ctrl+C. Jellyfin sees the guide as `/xmltv/guide.xml`.
 
 **e. Add the playlist in Jellyfin:** Dashboard → Live TV → Tuner Devices → **+**. Tuner type
 **M3U Tuner**, File or URL `https://iptv-org.github.io/iptv/countries/us.m3u`. Leave the rest and Save.

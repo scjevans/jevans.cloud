@@ -1,6 +1,6 @@
 #!/bin/sh
 # Fetches the TV guide on a timer, like a paperboy dropping off a fresh TV listings page.
-# Collects every guide it's given, staples them into one file with XMLTV's own Perl library (merge.pl),
+# Collects every guide it's given, staples them into one file (merge.pl),
 # and leaves /config/guide/guide.xml for Jellyfin (README.md step 22).
 
 PLAYLISTS="${XMLTV_PLAYLISTS:-}"
@@ -9,10 +9,13 @@ GRABBER="${XMLTV_GRABBER:-}"
 DAYS="${XMLTV_DAYS:-14}"
 EVERY="${XMLTV_EVERY_HOURS:-12}"
 PARTS=/config/parts
-# Shared with the iptv-epg container: we leave channels.xml here, it leaves guide.xml.
+# Shared with the iptv-epg container: we leave batches of channels in channels/, it leaves one guide
+# per batch in guides/ (same file names).
 IPTV=/config/iptv-org
 
 mkdir -p /config/guide "$PARTS" "$IPTV"
+# Left over from before the channels were split into batches.
+rm -f "$IPTV/channels.xml" "$IPTV/guide.xml" "$PARTS/iptv-org.xml"
 
 while true; do
   # 0. M3U playlists from iptv-org: work out which websites have listings for their channels,
@@ -25,15 +28,19 @@ while true; do
       curl -fsSL --retry 3 -o "$IPTV/playlist$m.m3u" "$url" && lists="$lists $IPTV/playlist$m.m3u"
     done
     echo "Fetching iptv-org's list of which website has each channel's listings..."
+    rm -rf "$IPTV/channels.new"
     if [ -n "$lists" ] && curl -fsSL --retry 3 -o "$IPTV/guides.json" https://iptv-org.github.io/api/guides.json \
-       && perl /usr/local/bin/make-channels.pl "$IPTV/guides.json" "$IPTV/channels.xml.new" $lists; then
-      mv "$IPTV/channels.xml.new" "$IPTV/channels.xml"
+       && perl /usr/local/bin/make-channels.pl "$IPTV/guides.json" "$IPTV/channels.new" $lists; then
+      rm -rf "$IPTV/channels" && mv "$IPTV/channels.new" "$IPTV/channels"
     else
-      rm -f "$IPTV/channels.xml.new"
+      rm -rf "$IPTV/channels.new"
       echo "Couldn't update the iptv-org channel list; keeping the last one."
     fi
-    # The guide iptv-epg built last time it ran.
-    [ -s "$IPTV/guide.xml" ] && cp "$IPTV/guide.xml" "$PARTS/iptv-org.xml"
+    # The guides iptv-epg built last time it ran, one per batch.
+    rm -f "$PARTS"/iptv-org-*.xml
+    for g in "$IPTV"/guides/*.xml; do
+      [ -s "$g" ] && cp "$g" "$PARTS/iptv-org-$(basename "$g")"
+    done
   fi
 
   # 1. Guides published online, usually by the same people who make the M3U playlist.
