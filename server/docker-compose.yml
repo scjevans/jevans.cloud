@@ -219,7 +219,7 @@ services:
     restart: unless-stopped
 
   # Builds the TV guide for iptv-org's channels. Nobody publishes one ready-made, so this visits each
-  # channel's listings website and writes down what's on, twice a day. Like a reporter phoning every
+  # channel's listings website and writes down what's on, once a day. Like a reporter phoning every
   # station for its schedule, so the paperboy (xmltv) has something to deliver.
   # It reads channels.xml (written by xmltv) and writes guide.xml, both in the shared iptv-org/ folder.
   iptv-epg:
@@ -227,8 +227,8 @@ services:
     container_name: iptv-epg
     environment:
       TZ: ${TZ}
-      # 2am and 2pm.
-      CRON_SCHEDULE: "0 2,14 * * *"
+      # 2am, when nobody is watching. Each run uses a few GB of memory for a while.
+      CRON_SCHEDULE: "0 2 * * *"
       # Two days of listings, ten websites at a time. More days means a longer run and more memory.
       DAYS: 2
       # It keeps every listing in memory until the end. Node.js stops at about 2 GB unless told
