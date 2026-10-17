@@ -190,8 +190,9 @@ services:
 
   # The TV guide for Jellyfin's Live TV: what's on each channel, and when.
   # Built from XMLTV (https://github.com/xmltv/xmltv) using the Dockerfile in the xmltv/ folder next to this file.
-  # Every 12 hours it fetches 14 days of listings and leaves guide.xml where Jellyfin can read it.
-  # No web page and no port. Outside the VPN: guide data isn't private, and the fetch is HTTPS anyway. See README.md step 22.
+  # Every 12 hours it fetches the guides that go with your M3U playlists, combines them into one guide.xml,
+  # and leaves it where Jellyfin can read it. No web page and no port. Outside the VPN: guide data isn't private.
+  # See README.md step 22.
   xmltv:
     build: ./xmltv
     container_name: xmltv
@@ -199,14 +200,16 @@ services:
     user: ${PUID}:${PGID}
     environment:
       TZ: ${TZ}
-      # The grabber keeps its settings in $HOME/.xmltv, so point $HOME at its config folder.
+      # Grabbers keep their settings in $HOME/.xmltv, so point $HOME at its config folder.
       HOME: /config
-      # Which XMLTV grabber to use. tv_grab_zz_sdjson is Schedules Direct, the one that covers the US.
-      XMLTV_GRABBER: tv_grab_zz_sdjson
+      # The guide links, separated by spaces. Set in .env.
+      XMLTV_GUIDE_URLS: ${XMLTV_GUIDE_URLS:-}
+      # Optional: also run an XMLTV grabber, e.g. tv_grab_zz_sdjson for Schedules Direct (README.md step 22g).
+      XMLTV_GRABBER: ${XMLTV_GRABBER:-}
       XMLTV_DAYS: 14
       XMLTV_EVERY_HOURS: 12
     volumes:
-      # Its settings (including your Schedules Direct login) and the finished guide in guide/.
+      # The downloaded guides, any grabber settings, and the finished guide in guide/.
       - ${CONFIG_DIR}/xmltv:/config
     networks:
       - guide
