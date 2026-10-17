@@ -670,6 +670,13 @@ cd ~/jevans.cloud && git pull && mkdir -p /opt/media/config/beszel/data /opt/med
 cd ~/jevans.cloud/server && docker compose up -d beszel
 ```
 
+If you had Grafana before, that says `port is already allocated`: Grafana still holds 3003. Stop the
+four old containers first, then run the line above again:
+
+```sh
+docker rm -f grafana prometheus node-exporter cadvisor
+```
+
 **b. Make your login.** On a computer at home, open `http://192.168.1.95:3003` and make an account
 (email and password; save them in Vaultwarden). The email is only a username: nothing is sent to it.
 
@@ -683,28 +690,29 @@ cd ~/jevans.cloud/server && docker compose up -d beszel
   ```
 
 Leave the box open. It shows a `docker-compose.yml` with two lines you need: `KEY` (starts with
-`ssh-ed25519`) and `TOKEN`. In another window, on the server, open your settings:
+`ssh-ed25519`) and `TOKEN`. In another window, on the server, add them to your `.env` (it's your own
+copy, so `git pull` didn't add these lines). Run this, paste the KEY when it asks, and press Enter:
 
 ```sh
-nano ~/jevans.cloud/server/.env
+cd ~/jevans.cloud/server && read -p "KEY: " k && echo "BESZEL_AGENT_KEY='$k'" >> .env
 ```
 
-Fill in the two Beszel lines with those values, keeping single quotes around the key:
+Then the same for the TOKEN:
 
-```
-BESZEL_AGENT_KEY='ssh-ed25519 AAAA...'
-BESZEL_AGENT_TOKEN=...
+```sh
+read -p "TOKEN: " t && echo "BESZEL_AGENT_TOKEN=$t" >> .env
 ```
 
-Save (Ctrl+O, Enter, Ctrl+X), then start the agent, and the new Homepage tile:
+`grep BESZEL .env` should show both lines, the key inside single quotes. Then start the agent, and the
+new Homepage tile:
 
 ```sh
 docker compose up -d --remove-orphans && docker compose restart homepage
 ```
 
 Back in the browser, click **Add System** in the box. The server turns green within a minute.
-(`--remove-orphans` also stops and removes Grafana, Prometheus, node-exporter and cAdvisor if you had
-them; step g tidies up after them.)
+(`--remove-orphans` clears out anything else the compose file no longer lists; step g tidies up after
+Grafana.)
 
 **d. Look around.** Click **jevans-server**. Charts need a few minutes of readings before they draw a line.
 
@@ -1227,11 +1235,10 @@ the presses stop, your phone buzzes. Like a dead man's switch on a train.
 
 1. **Add New Monitor**, type **Push**, name `Media drive plugged in`, **Heartbeat Interval** `120`
    (two missed minutes before it worries). Copy the **Push URL** it shows, then **Save**.
-2. On the server, put that URL in `.env` (`nano ~/jevans.cloud/server/.env`), on the
-   `MEDIA_DRIVE_PUSH_URL=` line, inside single quotes:
+2. On the server, add that URL to your `.env`. Run this, paste the URL when it asks, and press Enter:
 
-   ```
-   MEDIA_DRIVE_PUSH_URL='http://192.168.1.95:3004/api/push/AbC123?status=up&msg=OK&ping='
+   ```sh
+   cd ~/jevans.cloud/server && read -p "Push URL: " u && echo "MEDIA_DRIVE_PUSH_URL='$u'" >> .env
    ```
 
 3. Tell the server to run the check every minute (this adds one line to your scheduled jobs, "cron"):
