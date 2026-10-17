@@ -1246,6 +1246,79 @@ the error it got. Then:
 - **Media drive:** check the USB cable and power, then `sudo mount -a` and `docker compose restart`.
 - **Drives, temperature, memory:** open Grafana for which drive or app it is.
 
+### 23. Do Jellyfin's chores overnight
+
+Left alone, Jellyfin does its chores whenever it likes: a full library scan every 12 hours, watching
+the folders all day for changes, and making scrub-bar previews (trickplay), chapter pictures and intro
+markers the moment a film lands. On a small PC that can mean the fan spinning up while someone is
+watching. These steps move the chores to a quiet window, **2 to 4 AM**, like having the cleaners
+come in after the shop has shut.
+
+The catch is that with the folder-watching off, Jellyfin only notices new films at night. Step a fixes
+that: Sonarr and Radarr tell Jellyfin the moment they finish a download, so new things still show up
+straight away. It's the delivery driver ringing the doorbell, instead of a guard staring at the door all day.
+
+Times below are the server's clock, which is Eastern because `TZ=America/New_York` in `.env`.
+
+**a. Let Sonarr and Radarr ring the doorbell.** In Jellyfin: Dashboard → **API Keys** → **+**, name it
+`arr`, and copy the key. Then in **Sonarr** (`:8989`): Settings → **Connect** → **+** → **Emby / Jellyfin**:
+
+| Setting | Value |
+| ------- | ----- |
+| Name | `Jellyfin` |
+| Host | `jellyfin` |
+| Port | `8096` |
+| API Key | the key you just copied |
+| Update Library | ticked |
+| Notification Triggers | On Import, On Upgrade, On Rename, On Delete |
+
+Test, then Save. Do the same in **Radarr** (`:7878`). Now each new download is added to Jellyfin within
+a minute, with only that one folder checked, not the whole library.
+
+**b. Stop the folder-watching and the on-arrival work.** Dashboard → **Libraries** → on each library,
+**⋮** → **Manage library**, and untick:
+
+- **Enable real-time monitoring** (step a does this job now)
+- **Extract trickplay images during the library scan**
+- **Extract chapter images during the library scan**
+
+Save. Trickplay previews still get made, just overnight by the task in step d.
+
+**c. Make the heavy work polite.** Dashboard → **Playback** → **Trickplay**:
+
+- **Enable hardware decoding**: ticked (uses the Quick Sync chip, not the CPU)
+- **Only generate images from key frames**: ticked (much faster, previews are a touch less exact)
+- **Process priority**: *Below Normal* or *Idle*, so if someone is watching at 3 AM, they win
+
+**d. Set the schedule.** Dashboard → **Scheduled Tasks**. Click a task, delete its old triggers with
+the **−** button, then **+ Add Trigger** → *Daily*, pick the time, and set a *Time limit* where the
+table has one. A time limit is like a cleaner's shift ending: the job stops, and picks up where it left
+off the next night.
+
+| Task | When | Time limit |
+| ---- | ---- | ---------- |
+| Scan Media Library | Daily, 2:00 AM | |
+| Detect and Analyze Media Segments (Intro Skipper), and Media Segment Scan if you have it | Daily, 2:30 AM | 30 minutes |
+| Generate Trickplay Images | Daily, 3:00 AM | 1 hour |
+| Extract Chapter Images | No trigger (off): they only appear in the chapter menu, and trickplay covers scrubbing | |
+| Oscars refresh (from the Jellyfin Oscars plugin) | *Weekly*, Sunday 2:15 AM | |
+| Clean Cache, Clean Logs, Clean Transcode, Optimize Database, Refresh People, Update Plugins, and anything else in the list | Daily, 2:15 AM | |
+
+Leave the triggers that say *On application startup* where a task has one. If a plugin added a task
+not in the table, give it the 2:15 AM slot too.
+
+The very first trickplay run across a whole library takes longer than one hour, so it chips away over
+a few nights. Until a film's turn comes, its scrub bar just has no preview pictures.
+
+**e. Subtitles too (Bazarr).** Bazarr (`:6767`) → Settings → **Scheduler**. Set **Search for Missing
+Series Subtitles** and **Search for Missing Movies Subtitles** to once a day at 3 AM if your version
+offers a time, otherwise every 24 hours. It still searches straight away for each new download, which
+is the one you'd actually notice.
+
+**How do I know it worked?** The next morning, Dashboard → **Scheduled Tasks** shows each task's
+*Last run* time between 2 and 4 AM. During the day, Grafana's CPU chart (step 16) should stay low
+unless someone is watching.
+
 ## Everyday commands
 
 ```sh
