@@ -22,6 +22,7 @@ Think of it as a small restaurant:
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 | **Jellystat** | 3002 | Keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
 | **Grafana** | 3003 | Charts of the server's health: CPU, memory, drives, temperature, and what each app uses | The gauges on the kitchen wall: oven temperature, fridge, gas |
+| **Uptime Kuma** | 3004 | Checks every app and the server's health each minute, and sends a push notification to your phone when something breaks (step 23) | The night manager who phones you if the freezer stops |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
 | **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
 | **XMLTV** + **iptv-epg** | | Build and deliver the TV guide (what's on each channel, and when) for Jellyfin's free live TV channels (step 22) | The reporter who collects the TV listings, and the paperboy who delivers them |
@@ -1157,6 +1158,154 @@ it. Every few months, rebuild it with the latest XMLTV from Debian:
 docker compose build --pull xmltv && docker compose up -d xmltv
 ```
 
+### 23. Alerts on your phone, and a look inside from anywhere (Uptime Kuma + ntfy + Tailscale)
+
+Grafana is great for looking back, but you have to go and look. This step adds a night watchman who
+does the rounds every minute and phones you the moment something's wrong, with what's wrong:
+
+| Piece | Job | Like |
+| ----- | --- | ---- |
+| **Uptime Kuma** (container, port 3004) | Checks every app, the VPN, the drives, temperatures and memory once a minute | The night watchman with a checklist |
+| **ntfy** (free app on your phone) | Delivers Uptime Kuma's "Jellyfin is down" and "Jellyfin is back" messages as push notifications | The watchman's pager |
+| **Tailscale** (on the server and your phone) | A private tunnel from your phone to the server, so every home-only page works away from home | A key to the back door that only your phone has |
+
+Nothing new is opened to the internet: no port forwarding, no Caddy site. Tailscale is the same kind
+of encrypted WireGuard tunnel as your Mullvad VPN, just between your own devices.
+
+The server-health checks (drives, temperature, memory) are written down in
+`prometheus/health-rules.yml`. Prometheus works each one out every 30 seconds into a single number, so
+Uptime Kuma only asks "is it still 0?".
+
+**a. Get the new files, make the folder, start it.**
+
+```sh
+cd ~/jevans.cloud && git pull && mkdir -p /opt/media/config/uptime-kuma
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d && docker compose restart prometheus homepage
+```
+
+Prometheus and Homepage restart so they pick up the health rules and the new tile.
+
+**b. Make your Uptime Kuma login.** On a computer at home, open `http://192.168.1.95:3004`. If it asks
+which database to use, pick **SQLite**. Then make a username and password (save them in Vaultwarden).
+
+**c. Get the ntfy app and pick a secret channel name.** Install **ntfy** from the App Store or Google
+Play. ntfy's free server delivers to anyone subscribed to a channel name (a "topic"), so make one
+nobody could guess. On the server:
+
+```sh
+echo "jevans-$(openssl rand -hex 8)"
+```
+
+Copy what it prints (something like `jevans-3f9a1c0e7b2d4a56`). In the ntfy app tap **+**, paste it as
+the topic, leave the server as `ntfy.sh`, and **Subscribe**. Allow notifications when it asks.
+
+**d. Tell Uptime Kuma about your phone and about Docker.** In Uptime Kuma, click your name top right →
+**Settings**.
+
+1. **Notifications** → **Setup Notification**. Type **ntfy**, a name like `My phone`, server URL
+   `https://ntfy.sh`, the topic from step c, priority **High**. Tick **Default enabled** and **Apply on
+   all existing monitors**. Click **Test**: your phone should buzz. **Save**.
+2. **Docker Hosts** → **Setup Docker Host**. Name `server`, connection type **TCP / HTTP**, Docker
+   daemon `http://dockerproxy:2375`. **Save**. (That's the same read-only Docker doorman Homepage uses:
+   it can answer "is this running?" but can't start or stop anything.)
+
+**e. Add the checks.** Back on the main page, **Add New Monitor** for each line below. Leave everything
+else as it is (it checks every 60 seconds). Once one is done, the **Clone** button on it is the quick
+way to make the next.
+
+*Is each app running?* Monitor type **Docker Container**, Docker host `server`, and the friendly name
+and container name both set to:
+
+```
+gluetun
+```
+
+then the same again for each of these (one monitor each): `jellyfin`, `qbittorrent`, `prowlarr`,
+`sonarr`, `radarr`, `sabnzbd`, `bazarr`, `seerr`, `caddy`, `adguard`, `vaultwarden`, `homepage`.
+
+The `gluetun` one doubles as your VPN alarm: Gluetun tells Docker it's unhealthy when the tunnel drops,
+and Uptime Kuma passes that on. (qBittorrent and Prowlarr have no internet then, by design.)
+
+*Is Jellyfin actually answering?* Monitor type **HTTP(s) - Keyword**, name `Jellyfin answers`, URL
+and keyword:
+
+```
+http://jellyfin:8096/health
+```
+
+```
+Healthy
+```
+
+*Is the server healthy?* Monitor type **HTTP(s) - Json Query**. For each row, set the name, paste the
+URL, set **Json Query Expression** to `data.result[0].value[1]`, the condition to `==`, and
+**Expected Value** to the number in the last column:
+
+| Friendly name | URL | Expected value |
+| ------------- | --- | -------------- |
+| Drives under 90% full | `http://prometheus:9090/api/v1/query?query=health:drives_over_90_percent` | `0` |
+| Media drive plugged in | `http://prometheus:9090/api/v1/query?query=health:media_drive_mounted` | `1` |
+| Temperatures OK | `http://prometheus:9090/api/v1/query?query=health:sensors_over_85c` | `0` |
+| Memory OK | `http://prometheus:9090/api/v1/query?query=health:memory_almost_full` | `0` |
+
+"Media drive plugged in" matters most: the media drive is a USB drive, and if it ever drops off, `/data`
+quietly becomes an empty folder on the small SSD.
+
+**f. A one-glance page.** **Status Pages** → **New Status Page**, name `Server`, slug:
+
+```
+server
+```
+
+Click **Add a monitor** and add them all, then **Save**. That page is what the Uptime Kuma tile on
+Homepage shows, and it's handy on your phone.
+
+**g. Install Tailscale on the server.** Paste these one at a time:
+
+```sh
+curl -fsSL https://tailscale.com/install.sh | sh
+```
+
+```sh
+sudo tailscale up --advertise-routes=192.168.1.95/32 --accept-dns=false
+```
+
+It prints a link: open it, sign in (Google or Apple is fine) and approve **jevans-server**. What the two
+extras mean: `--advertise-routes=192.168.1.95/32` lets your phone use the server's normal home address,
+so every link on Homepage works unchanged. `--accept-dns=false` leaves the server's own DNS alone, so
+AdGuard keeps working as before.
+
+Then on [login.tailscale.com/admin/machines](https://login.tailscale.com/admin/machines), click the
+**⋯** next to **jevans-server**:
+
+1. **Edit route settings** → tick `192.168.1.95/32` → **Save**.
+2. **Disable key expiry**, so the server doesn't drop off your tailnet every 6 months.
+
+**h. Install Tailscale on your phone.** Get **Tailscale** from the App Store or Google Play and sign in
+with the same account. Turn it on, switch your phone to mobile data, and open:
+
+```
+http://192.168.1.95:3004
+```
+
+That's Uptime Kuma. The same way, `http://192.168.1.95:3000` is Homepage and `http://192.168.1.95:3003`
+is Grafana, wherever you are. (`home.jevans.cloud` and `vault.jevans.cloud` stay home-Wi-Fi only; use
+the number addresses away from home.)
+
+**When your phone buzzes,** the message names the check. Tap it in Uptime Kuma to see when it broke and
+the error it got. Then:
+
+- **An app is down:** `docker compose up -d <name>` brings it back; `docker compose logs --tail 50 <name>`
+  says why it stopped. You can SSH from your phone too: Termius (free) works over Tailscale to
+  `mediabox@192.168.1.95`.
+- **gluetun:** `docker logs gluetun --tail 50`. Often Mullvad is just having a moment, and it reconnects
+  on its own within a few minutes.
+- **Media drive:** check the USB cable and power, then `sudo mount -a` and `docker compose restart`.
+- **Drives, temperature, memory:** open Grafana for which drive or app it is.
+
 ## Everyday commands
 
 ```sh
@@ -1200,6 +1349,16 @@ docker compose down            # stop everything (your settings and files stay)
   fails, AdGuard may be blocking the speed test site: in AdGuard (`http://192.168.1.95:3001`) open
   **Query log**, search `speedtest`, and click **Unblock** on any red line. One slow result is normal;
   a slow pattern at the same hour usually means someone is busy downloading then.
+- **Uptime Kuma says a Docker check can't connect:** the Docker host must be `http://dockerproxy:2375`
+  with type TCP / HTTP (step 23d), and `docker compose ps dockerproxy` should say `Up`.
+- **The health checks say "no result" or the value is missing:** Prometheus hasn't loaded the rules.
+  `docker compose restart prometheus`, then `docker logs prometheus --tail 20` names any problem.
+- **No buzz on your phone:** in ntfy check the topic matches step c exactly, and that notifications are
+  allowed for ntfy in your phone's settings. Uptime Kuma's **Test** button in the notification settings
+  sends one straight away.
+- **The 192.168.1.95 addresses don't open away from home:** Tailscale must be on in the phone app, and
+  the `192.168.1.95/32` route approved in the Tailscale admin page (step 23g). `tailscale status` on
+  the server should list your phone.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).

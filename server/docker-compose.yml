@@ -495,6 +495,31 @@ services:
       - monitoring
     restart: unless-stopped
 
+  # ---- The alarm: Uptime Kuma checks every app and the server's health once a minute ----
+  # and sends a push notification to your phone (through the ntfy app) when something breaks, and again when it's fixed.
+  # Like a night watchman doing rounds with a list: "Jellyfin's door open? VPN on? Drive plugged in?"
+  # Home only, no Caddy site: http://<server-ip>:3004. Away from home, Tailscale on your phone gets you in. See README.md step 23.
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    environment:
+      TZ: ${TZ}
+    ports:
+      # 3001 inside, 3004 outside: AdGuard has 3001 and Grafana has 3003.
+      - 3004:3001
+    volumes:
+      # Your monitors, alert settings and history live here.
+      - ${CONFIG_DIR}/uptime-kuma:/app/data
+    networks:
+      # To knock on each app's door by name (jellyfin, sonarr...).
+      media:
+        ipv4_address: 172.30.0.21
+      # To read Prometheus's health checks.
+      monitoring:
+      # To ask the Docker doorman (dockerproxy) whether each container is running and healthy. Read-only.
+      dashboard:
+    restart: unless-stopped
+
   # The logbook. Keeps 30 days of readings, then forgets the oldest. No port on your network.
   prometheus:
     image: prom/prometheus:latest
@@ -509,6 +534,7 @@ services:
       - host.docker.internal:host-gateway
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/health-rules.yml:/etc/prometheus/health-rules.yml:ro
       - ${CONFIG_DIR}/prometheus:/prometheus
     networks:
       - monitoring

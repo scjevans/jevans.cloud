@@ -4,6 +4,10 @@ global:
   scrape_interval: 30s
   evaluation_interval: 30s
 
+# The "call the doctor if..." notes that Uptime Kuma checks (README.md step 23).
+rule_files:
+  - /etc/prometheus/health-rules.yml
+
 scrape_configs:
   # Prometheus keeping an eye on itself.
   - job_name: prometheus
