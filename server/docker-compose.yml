@@ -13,7 +13,7 @@ networks:
         - subnet: 172.30.0.0/24
   # The dashboard and its Docker helper talk on their own network, away from the media apps.
   dashboard:
-  # Grafana, Prometheus and cAdvisor talk here. Only Grafana has a door to your network.
+  # Beszel's hub sits here on its own. Its only door to your network is port 3003.
   monitoring:
 
 x-common-env: &common-env
@@ -395,42 +395,56 @@ services:
       - dashboard
     restart: unless-stopped
 
-  # ---- Server health: charts of CPU, memory, drives, temperatures and each app's use. ----
-  # Like a car's dashboard: cAdvisor and node-exporter are the sensors, Prometheus is the logbook
-  # that writes their readings down every 30 seconds, Grafana draws the gauges. See README.md step 16.
+  # ---- Server health: charts of CPU, memory, drives, temperatures and each app's use, plus alerts. ----
+  # Like a fitness tracker on your wrist: the agent is the sensor strapped to the server, reading the
+  # PC and every container; the hub is the phone app that keeps the history, draws the charts, and
+  # buzzes your phone (through ntfy) when a number goes over a line you set. See README.md step 16.
   # Home only, no Caddy site: http://<server-ip>:3003.
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    # Runs as you, so its folder in CONFIG_DIR needs no special owner.
-    user: ${PUID}:${PGID}
-    depends_on:
-      - prometheus
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: beszel
     environment:
       TZ: ${TZ}
-      GF_SECURITY_ADMIN_USER: admin
-      # Only used the very first time. After that, change the password inside Grafana.
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
-      # Open straight onto the server dashboard.
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/server.json
+      # The address you open it at, used for links in its alerts.
+      APP_URL: http://${SERVER_IP}:3003
     ports:
-      # 3000 inside, 3003 outside: the dashboard, AdGuard and JellyDash have 3000 to 3002.
-      - 3003:3000
+      # 8090 inside, 3003 outside: the address Grafana had.
+      - 3003:8090
     volumes:
-      - ${CONFIG_DIR}/grafana:/var/lib/grafana
-      # The Prometheus connection and the ready-made dashboard, from the grafana/ folder next to this file.
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      # Your login, settings, alerts and history live here.
+      - ${CONFIG_DIR}/beszel/data:/beszel_data
+      # A private pipe (a "socket" file) the agent and hub talk through, so the agent needs no open port.
+      - ${CONFIG_DIR}/beszel/socket:/beszel_socket
     networks:
       - monitoring
+    restart: unless-stopped
+
+  # The sensor. Uses the server's own network so it sees the real network card's traffic.
+  beszel-agent:
+    image: henrygd/beszel-agent:latest
+    container_name: beszel-agent
+    network_mode: host
+    environment:
+      # Talk to the hub through the socket file instead of opening a port.
+      LISTEN: /beszel_socket/beszel.sock
+      HUB_URL: http://localhost:3003
+      # The hub's ID card and the agent's pass, both copied from the hub's "Add System" box (README.md step 16c).
+      KEY: ${BESZEL_AGENT_KEY}
+      TOKEN: ${BESZEL_AGENT_TOKEN}
+    volumes:
+      - ${CONFIG_DIR}/beszel-agent:/var/lib/beszel-agent
+      - ${CONFIG_DIR}/beszel/socket:/beszel_socket
+      # To read how much CPU, memory and network each container uses.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # The media drive, read-only, so it gets its own chart and counts for the "disk full" alert.
+      # "sdb1" is the drive's name in `lsblk` (for read/write speed), "Media" is the label you see.
+      - ${DATA_DIR}:/extra-filesystems/sdb1__Media:ro
     restart: unless-stopped
 
   # ---- The alarm: Uptime Kuma checks every app and the server's health once a minute ----
   # and sends a push notification to your phone (through the ntfy app) when something breaks, and again when it's fixed.
   # Like a night watchman doing rounds with a list: "Jellyfin's door open? VPN on? Drive plugged in?"
+  # (Beszel watches the numbers: disk space, temperature, memory.)
   # Home only, no Caddy site: http://<server-ip>:3004. Away from home, Tailscale on your phone gets you in. See README.md step 22.
   uptime-kuma:
     image: louislam/uptime-kuma:2
@@ -438,7 +452,7 @@ services:
     environment:
       TZ: ${TZ}
     ports:
-      # 3001 inside, 3004 outside: AdGuard has 3001 and Grafana has 3003.
+      # 3001 inside, 3004 outside: AdGuard has 3001 and Beszel has 3003.
       - 3004:3001
     volumes:
       # Your monitors, alert settings and history live here.
@@ -447,64 +461,6 @@ services:
       # To knock on each app's door by name (jellyfin, sonarr...).
       media:
         ipv4_address: 172.30.0.21
-      # To read Prometheus's health checks.
-      monitoring:
       # To ask the Docker doorman (dockerproxy) whether each container is running and healthy. Read-only.
       dashboard:
-    restart: unless-stopped
-
-  # The logbook. Keeps 30 days of readings, then forgets the oldest. No port on your network.
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    user: ${PUID}:${PGID}
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=30d
-    extra_hosts:
-      # So it can reach node-exporter, which lives on the server's own network.
-      - host.docker.internal:host-gateway
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/health-rules.yml:/etc/prometheus/health-rules.yml:ro
-      - ${CONFIG_DIR}/prometheus:/prometheus
-    networks:
-      - monitoring
-    restart: unless-stopped
-
-  # Sensor for the server itself: CPU, memory, drives, temperatures, network.
-  # Uses the server's own network so it sees the real network card, on port 9100 (read-only numbers).
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    command:
-      - --path.rootfs=/host
-    network_mode: host
-    pid: host
-    volumes:
-      # The whole server, read-only, so it can measure every drive (including /data).
-      - /:/host:ro,rslave
-    restart: unless-stopped
-
-  # Sensor for the containers: how much each app uses. It has to look at Docker and the kernel
-  # directly, so it gets wide read access; it has no port on your network.
-  cadvisor:
-    image: ghcr.io/google/cadvisor:v0.60.6
-    container_name: cadvisor
-    privileged: true
-    devices:
-      - /dev/kmsg
-    command:
-      - --docker_only=true
-      - --housekeeping_interval=30s
-      - --store_container_labels=false
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    networks:
-      - monitoring
     restart: unless-stopped

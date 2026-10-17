@@ -79,12 +79,12 @@
         description: Blocks ads and trackers for every device
         server: docker
         container: adguard
-    - Grafana:
-        icon: grafana.png
+    - Beszel:
+        icon: beszel.png
         href: http://{{HOMEPAGE_VAR_SERVER_IP}}:3003
-        description: Server health charts
+        description: Server health charts, alerts for disk, heat and memory
         server: docker
-        container: grafana
+        container: beszel
     - Uptime Kuma:
         icon: uptime-kuma.png
         href: http://{{HOMEPAGE_VAR_SERVER_IP}}:3004
