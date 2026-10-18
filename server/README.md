@@ -992,13 +992,21 @@ Each person does this in their own account, on the web or in an app:
      below zero and is skipped, like a shop that won't take a delivery with the wrong label.
    - **Language**: English. Tick **Upgrades Allowed**, then Save.
 
-Dual-audio releases that include English still get through, which is fine: step a makes them play
-in English.
+4. Settings → **Custom Formats** → **+** → name it `Foreign dub`.
+5. **+** under Conditions → **Release Title** → paste this into the box, then Save. Save again:
+   `\b(german|deutsch|ger|ita|italian|french|truefrench|vff|spanish|castellano|latino|multi)\b`
+6. Back in each quality profile, give `Foreign dub` a score of `-10000` too, then Save.
+
+Why step 4 is needed: a release like `Show.S01E01.German.DL.1080p.WEB-GROUP` is "dual language", a
+German dub with the original English soundtrack packed alongside it. Because English is in there,
+`Not English` doesn't fire, so these used to slip through. The `Foreign dub` format reads the name
+on the box instead of the languages inside it, and turns them down anyway.
 
 **c. Same for Sonarr**
 
-Repeat b in Sonarr. Its profiles have no Language box, so skip that line; the custom format does
-the job on its own.
+Repeat b in Sonarr (both custom formats). Its profiles have no Language box, so skip that line; the
+custom formats do the job on their own. Make sure **Upgrades Allowed** is ticked in each Sonarr
+profile, or Sonarr will keep the copies it already has.
 
 **d. Swap out the Italian copies you already have**
 
@@ -1006,6 +1014,10 @@ In Radarr: **Wanted** → **Cutoff Unmet** → **Search All**. The Italian-only 
 your profile's target, so Radarr looks for an English copy and replaces them. In Sonarr, open the
 show, check the episode's language on the **Files** tab, and press the search (magnifier) button on
 any Italian ones. If one still won't upgrade, delete that file and search again.
+
+Still downloading? In Sonarr or Radarr, open **Activity** → **Queue**, tick the foreign releases,
+press **Remove Selected**, choose **Remove from download client** and **Blocklist and search**. That
+cancels the download, bans that exact release, and looks for another.
 
 **e. Check the phone book**
 
