@@ -1,5 +1,5 @@
 # Caddy: the front door for Jellyfin and Seerr from the internet.
-# It answers https://media.jevans.cloud and https://requests.jevans.cloud, gets and renews the HTTPS certificate on its own,
+# It answers https://media.jevans.cloud, https://requests.jevans.cloud and https://watch.jevans.cloud, gets and renews the HTTPS certificate on its own,
 # and passes each visitor through to the right app. Nothing else on the server is reachable this way.
 # home.jevans.cloud (the dashboard) and vault.jevans.cloud (the password safe) are the exceptions: they only answer inside your home.
 
@@ -14,8 +14,24 @@
 		TXT 200
 }
 
+# Security headers for the two public sites (assessment findings 6 and 7).
+# Tells browsers: always use HTTPS, don't guess file types, don't let other sites frame these pages,
+# and don't share the full page address with other sites. Also hides which server software sits behind Caddy.
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+		-Server
+		-X-Powered-By
+	}
+}
+
 media.jevans.cloud {
 	import no_search_engines
+	import security_headers
 
 	# Squeeze the web pages and API replies (video is already compressed, so it is left alone).
 	encode zstd gzip
@@ -26,10 +42,31 @@ media.jevans.cloud {
 # Seerr: where people ask for movies and shows. They sign in with their Jellyfin account.
 requests.jevans.cloud {
 	import no_search_engines
+	import security_headers
+
+	# Seerr is already set up, so its first-time setup page has nothing to offer. Send visitors to sign-in (finding 5).
+	redir /setup /login 302
 
 	encode zstd gzip
 
 	reverse_proxy seerr:5055
+}
+
+# SyncTube watch parties. Public, but behind one shared password you give to friends,
+# like a door code: SyncTube itself lets anyone who finds the page join and upload videos.
+# Username `friends`; the scrambled password comes from SYNCTUBE_PASSWORD_HASH in .env (README.md step 25).
+# The live play/pause syncing rides the same connection (a WebSocket), which Caddy passes through on its own.
+watch.jevans.cloud {
+	import no_search_engines
+	import security_headers
+
+	basic_auth {
+		friends {$SYNCTUBE_PASSWORD_HASH}
+	}
+
+	encode zstd gzip
+
+	reverse_proxy synctube:4200
 }
 
 # The dashboard, home-only. Caddy still gets it a real HTTPS certificate,
