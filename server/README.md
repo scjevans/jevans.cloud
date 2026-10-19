@@ -25,6 +25,7 @@ Think of it as a small restaurant:
 | **Uptime Kuma** | 3004 | Checks every app and the server's health each minute, and sends a push notification to your phone when something breaks (step 22) | The night manager who phones you if the freezer stops |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
 | **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
+| **SyncTube** | 4200 | Watch parties: everyone sees the same YouTube video (or video link) at the same moment, with a chat (step 24) | The projectionist who starts the film for every table at once |
 
 ### Why the tunnel matters
 
@@ -1411,6 +1412,79 @@ If the report fails: `tail ~/server-reports.log` says why. `HTTP Error 400` mean
 in `.env` doesn't match step e. "can't see any systems" means step d's `docker compose up -d beszel`
 didn't run. `Permission denied (publickey)` means the deploy key in step b is missing or lacks
 **Allow write access**.
+
+### 24. Watch parties (SyncTube)
+
+SyncTube is a web page where everyone watches the same video at the same moment. Paste a YouTube link
+(or Twitch, Vimeo, or a direct `.mp4` link) and it plays for everyone in the room, with a chat on the side.
+Whoever holds the **Leader** button is the projectionist: when they pause, skip or rewind, every screen
+follows. Nobody needs an account, just a nickname.
+
+It's home only, at `http://192.168.1.95:4200`, and works away from home over Tailscale (step 22h), so
+anyone on your Tailscale can join. Nothing new is opened to the internet.
+
+For films and shows **in your Jellyfin library**, Jellyfin already has this built in: **SyncPlay** (the
+icon with two people at the top of a video in the Jellyfin app or web page). SyncTube is for everything
+else: YouTube, trailers, clips.
+
+There's no ready-made SyncTube image to download, so the first start **builds** one from the author's
+code, pinned to one exact version. That takes a few minutes the first time only.
+
+**a. Get the new files and make the folder.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+mkdir -p /opt/media/config/synctube && sudo chown 1000:1000 /opt/media/config/synctube
+```
+
+SyncTube runs as user 1000 inside its container, so its folder belongs to 1000 (like Seerr's).
+
+**b. Build it and start it.**
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d --build synctube && docker compose restart homepage
+```
+
+You'll see it download and compile for a few minutes. Then check:
+
+```sh
+docker compose ps synctube
+```
+
+It should say `Up` (or `running`). Open `http://192.168.1.95:4200`, type a nickname, tap **+** under the
+video area and paste a YouTube link. Open the same page on a second device: tap **Leader**, pause on one,
+and the other pauses too. The dashboard has a new **SyncTube** tile under Watch.
+
+**c. Optional: make yourself an admin.** Anyone can add videos and take the Leader button, which is fine
+for family. Admins can also clear the chat, lock the playlist and kick people. SyncTube takes this as a
+typed command, so you step into its console:
+
+```sh
+docker attach synctube
+```
+
+Press Enter once and you'll see a `>` prompt. Type `addAdmin`, a space, your nickname, a space, and a
+new password, then Enter. For example `addAdmin Jack correct-horse-battery`. Then leave **without
+stopping it**: hold Ctrl and press **P**, then **Q**. (In Termius, the Ctrl key is on the bar above the
+keyboard.) If you press Ctrl+C by mistake, SyncTube stops and Docker starts it again a moment later.
+
+Back on the page, log in with that nickname and password.
+
+**d. Optional settings.** Put any you want in `/opt/media/config/synctube/config.json` (the full list is
+in the author's `default-config.json`), then `docker compose restart synctube`. Two handy ones for a
+small group:
+
+- `"requestLeaderOnPause": true` lets anyone pause for everyone, without taking the Leader button.
+- `"unpauseWithoutLeader": true` lets anyone press play again.
+
+Videos uploaded from a device are kept in that folder too, capped at 3 GB (`cacheStorageLimitGiB`).
+
+**Updating:** SyncTube is built, not pulled, so `docker compose pull` skips it. Ask Claude for the newest
+version: it's one line in `docker-compose.yml` (the long code after `#`), then
+`docker compose up -d --build synctube`.
 
 ## Everyday commands
 

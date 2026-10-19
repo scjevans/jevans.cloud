@@ -466,3 +466,26 @@ services:
       # To ask the Docker doorman (dockerproxy) whether each container is running and healthy. Read-only.
       dashboard:
     restart: unless-stopped
+
+  # ---- Watch parties: SyncTube plays the same YouTube video (or any video link) for everyone at once, with a chat. ----
+  # Like a cinema projectionist: whoever holds the "Leader" button presses play or pause, and every screen follows.
+  # There's no ready-made image, so Docker builds it from the author's code, pinned to one exact version.
+  # To update: change the long code after "#" to a newer commit, then `docker compose up -d --build synctube`.
+  # Home only, no Caddy site: http://<server-ip>:4200. Away from home, Tailscale gets you in. See README.md step 24.
+  synctube:
+    build: https://github.com/RblSb/SyncTube.git#7b0ea5877eefcfe70744683a4273b52b3e34037a
+    container_name: synctube
+    environment:
+      TZ: ${TZ}
+    ports:
+      - 4200:4200
+    volumes:
+      # Settings (config.json), admin logins, the chat history and uploaded videos live here.
+      - ${CONFIG_DIR}/synctube:/app/user
+    # SyncTube takes admin commands typed into its console: `docker attach synctube` reaches it (step 24c).
+    stdin_open: true
+    tty: true
+    networks:
+      media:
+        ipv4_address: 172.30.0.22
+    restart: unless-stopped
