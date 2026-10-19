@@ -18,7 +18,7 @@ Think of it as a small restaurant:
 | **SABnzbd** | 8085 | Downloads from Usenet, if you add it (step 20) | The courier from a private warehouse |
 | **Gluetun** | | A VPN tunnel that qBittorrent and Prowlarr live inside | A sealed tunnel the van must drive through |
 | **Homepage** | 3000 | One page showing every app, whether it's running, and a link to open it | The board by the kitchen door |
-| **Caddy** | 80, 443 | Lets the outside world reach Jellyfin and Seerr (and nothing else) over HTTPS | The host at the front door |
+| **Caddy** | 80, 443 | Lets the outside world reach Jellyfin, Seerr and SyncTube (and nothing else) over HTTPS | The host at the front door |
 | **AdGuard Home** | 53, 3001 | Answers "where is this website?" for every device at home, and says "nowhere" for ads and trackers | The bouncer with a short list of known troublemakers |
 | **JellyDash** | 3002 | Shows what's playing right now and keeps a diary of everything watched on Jellyfin: who, what, when, how long | The waiter's notebook of who ordered what |
 | **Beszel** | 3003 | Charts of the server's health (CPU, memory, drives, temperature, and what each app uses), and alerts on your phone when disk, heat or memory cross a line | The gauges on the kitchen wall, with an alarm on the fridge |
@@ -1420,8 +1420,8 @@ SyncTube is a web page where everyone watches the same video at the same moment.
 Whoever holds the **Leader** button is the projectionist: when they pause, skip or rewind, every screen
 follows. Nobody needs an account, just a nickname.
 
-It's home only, at `http://192.168.1.95:4200`, and works away from home over Tailscale (step 22h), so
-anyone on your Tailscale can join. Nothing new is opened to the internet.
+At home it's at `http://192.168.1.95:4200`. Step 25 adds `https://watch.jevans.cloud` so friends can
+join from anywhere, behind a shared password.
 
 For films and shows **in your Jellyfin library**, Jellyfin already has this built in: **SyncPlay** (the
 icon with two people at the top of a video in the Jellyfin app or web page). SyncTube is for everything
@@ -1485,6 +1485,72 @@ Videos uploaded from a device are kept in that folder too, capped at 3 GB (`cach
 **Updating:** SyncTube is built, not pulled, so `docker compose pull` skips it. Ask Claude for the newest
 version: it's one line in `docker-compose.yml` (the long code after `#`), then
 `docker compose up -d --build synctube`.
+
+### 25. Watch parties with friends anywhere (watch.jevans.cloud)
+
+Do step 24 first. This gives SyncTube its own door, `https://watch.jevans.cloud`, the same way Jellyfin
+and Seerr have theirs (steps 7 and 8).
+
+SyncTube has no accounts of its own: anyone who finds the page can join, chat, and upload videos to your
+server. New web addresses get found by bots within hours, so Caddy puts one **shared password** on the
+door, like a door code you text to friends. They type it once per browser (username `friends`), then
+pick any nickname inside.
+
+**a. DNS.** Add one more record next to `media` and `requests`, with the same value:
+
+| Type | Name | Value | TTL |
+| ---- | ---- | ----- | --- |
+| `A` | `watch` | your home's public IP | 5 min (or the lowest offered) |
+
+**b. Get the new files.** Your server's Caddyfile has the security fixes from the runbook typed in by
+hand, and they're now saved in the repo too. So first move the hand-edited copy aside (a backup stays in
+your home folder), then pull:
+
+```sh
+cd ~/jevans.cloud/server && cp caddy/Caddyfile ~/Caddyfile.before-watch && git checkout -- caddy/Caddyfile
+```
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+**c. Make the friends' password.** This makes a random one, shows it to you, and saves only its scrambled
+form in `.env`:
+
+```sh
+cd ~/jevans.cloud/server && P=$(openssl rand -hex 6) && echo "Friends password: $P" && echo "SYNCTUBE_PASSWORD_HASH='$(docker exec caddy caddy hash-password --plaintext $P)'" >> .env
+```
+
+Write down the password it prints (save it in Vaultwarden). That's what you send friends.
+
+**d. Check, then restart Caddy.** Do this before any other `docker compose up -d`: Caddy refuses to start
+while that password is missing, and that would take Jellyfin and Seerr offline too.
+
+```sh
+cd ~/jevans.cloud/server && docker run --rm -e SYNCTUBE_PASSWORD_HASH="$(grep ^SYNCTUBE_PASSWORD_HASH= .env | cut -d"'" -f2)" -v "$PWD/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile
+```
+
+The last line should say `Valid configuration`. If it does:
+
+```sh
+docker compose up -d caddy
+```
+
+```sh
+docker logs caddy 2>&1 | grep -i watch.jevans.cloud
+```
+
+You want a line saying the certificate was obtained.
+
+**e. Check it.** On your phone with Wi-Fi off, open `https://watch.jevans.cloud`. It should ask for a
+username and password: `friends` and the password from step c. Then send a friend the link and the
+password.
+
+**f. Make yourself an admin** (step 24c) if you haven't. With people from outside, it's what lets you
+kick someone, clear the chat or lock the playlist.
+
+**Changing the password:** delete the `SYNCTUBE_PASSWORD_HASH` line with `nano .env`, then do steps c
+and d again. Everyone then needs the new one.
 
 ## Everyday commands
 
