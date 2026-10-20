@@ -149,6 +149,9 @@ Host `http://localhost:8191`, Tags `flaresolverr`. Then edit the blocked indexer
 
 **Jellyfin** (`:8096`)
 1. Follow the setup wizard. Add libraries: Shows → `/data/media/tv`, Movies → `/data/media/movies`.
+2. Dashboard → Libraries → Display → **Date added behavior for new content** → **Use date scanned into the library**, then Save.
+   Usenet downloads keep the date the uploader packed the file (often years ago), and by default Jellyfin
+   files a movie under that date, so it never shows in Recently Added (or in JellyDash).
 
 **Seerr** (`:5055`), after Jellyfin is set up
 1. Choose **Jellyfin** as your server type. Jellyfin URL: Hostname `jellyfin`, Port `8096`, no SSL.
