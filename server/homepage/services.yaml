@@ -27,6 +27,12 @@
         description: Watch YouTube together, in sync
         server: docker
         container: synctube
+    - Dispatcharr:
+        icon: dispatcharr.png
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:9191
+        description: Live TV channels and guide for Jellyfin
+        server: docker
+        container: dispatcharr
 
 - Find:
     - Sonarr:

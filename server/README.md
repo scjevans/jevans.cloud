@@ -26,6 +26,7 @@ Think of it as a small restaurant:
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
 | **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
 | **SyncTube** | 4200 | Watch parties: everyone sees the same YouTube video (or video link) at the same moment, with a chat (step 24) | The projectionist who starts the film for every table at once |
+| **Dispatcharr** | 9191 | Live TV: tidies channel lists and TV guides and hands them to Jellyfin's Live TV (step 26) | The listings magazine editor who picks your channels and prints the guide |
 
 ### Why the tunnel matters
 
@@ -1557,6 +1558,104 @@ kick someone, clear the chat or lock the playlist.
 **Changing the password:** delete the `SYNCTUBE_PASSWORD_HASH` line with `nano .env`, then do steps c
 and d again. Everyone then needs the new one.
 
+### 26. Live TV channels (Dispatcharr)
+
+Dispatcharr is like the editor of a TV listings magazine. A TV channel list (an **M3U** link, from an
+IPTV provider or a free public list) is often thousands of channels in a messy pile. Dispatcharr keeps
+only the ones you tick, puts them in your order, matches each one to its **guide** (the "what's on"
+listings, called **EPG**), and hands Jellyfin one neat list. Then the **Live TV** section in Jellyfin
+plays them, on every device that already has the Jellyfin app.
+
+**Before you start, the trade-off.** Live TV was tried on this server before and dropped as too heavy:
+the guide downloader ate memory and CPU. Dispatcharr is lighter because it only passes streams through
+(no re-encoding) and it's on a leash in `docker-compose.yml`: at most 1.5 GB of memory and 2 of the 4
+CPU cores. Expect roughly 0.5 to 1 GB in use while it's idle. The heavy moment is reading a big guide
+file, so the tips in step 26f keep that small. If the server ever feels slow, step 26g switches it off
+in one line.
+
+**Privacy note.** Live TV streams go over your normal internet, not the VPN (only qBittorrent and
+Prowlarr are inside the tunnel). Your internet provider can see that you're streaming from your TV
+provider's servers, the same as watching any streaming app. If you'd rather it went through the VPN,
+ask Claude: it's a small change, but every stream then shares the VPN's speed.
+
+At home it's at `http://192.168.1.95:9191`. Away from home, Tailscale on your phone gets you in (step 22).
+There's no public address for it.
+
+**a. Get the new files and make the folder.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+mkdir -p /opt/media/config/dispatcharr
+```
+
+**b. Start it.** The download is about 1 GB, so the first time takes a few minutes.
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d dispatcharr && docker compose restart homepage
+```
+
+```sh
+docker compose ps dispatcharr
+```
+
+It should say `Up` (or `running`). Give it a minute to set up its database the first time. The
+dashboard has a new **Dispatcharr** tile under Watch.
+
+**c. Make your login.** Open `http://192.168.1.95:9191`. The first time, it asks you to create an admin
+username and password. Save them in Vaultwarden.
+
+**d. Add your channels.** In the menu on the left, open **M3U & EPG Manager**.
+
+1. Under **M3U Accounts**, tap **+** (Add). Give it a name, paste your provider's M3U link (or, for free
+   public channels, `https://iptv-org.github.io/iptv/countries/us.m3u`) and save. It reads the list.
+2. If your provider also gave you a guide link (it may be called EPG or XMLTV), add it under **EPGs**
+   the same way. No guide link? Skip it: channels still play, there's just no "what's on".
+3. Open **Channels**. On the right are all the streams it found. Tick the ones you actually watch and
+   use the button to make channels from them. On the left, set each channel's number, and if it shows no
+   guide, pick its match in the EPG column.
+
+**e. Connect Jellyfin.** In Jellyfin: **Dashboard → Live TV**.
+
+1. Under **Tuner Devices**, tap **+**, choose **M3U Tuner**, and in **File or URL** type
+   `http://dispatcharr:9191/output/m3u`. Save.
+2. Under **TV Guide Data Providers**, tap **+**, choose **XMLTV**, and in **File or URL** type
+   `http://dispatcharr:9191/output/epg`. Save.
+3. Back on the Live TV page, tap **Refresh Guide Data** (or run **Refresh Guide** under
+   **Dashboard → Scheduled Tasks**).
+
+Open Jellyfin's home page: a **Live TV** section appears with your channels and a guide. Tap a channel
+to watch. Jellyfin reaches Dispatcharr by its name, `dispatcharr`, because they're on the same network.
+
+**f. Keep it light.** These keep memory and CPU low:
+
+- Only tick channels you'll really watch. Every channel adds to the guide Jellyfin and Dispatcharr store.
+- Add only the guide that matches your channels, not a whole-country or whole-world one.
+- In Dispatcharr, set your M3U and EPG to refresh once a day (24 hours), not every few hours.
+- In Jellyfin, leave **Refresh Guide** on its daily schedule.
+
+To see how much it's using right now:
+
+```sh
+docker stats --no-stream dispatcharr
+```
+
+The `MEM USAGE` column shows its memory against its 1.5 GiB limit. Beszel (step 16) keeps the
+history and warns you if the server's memory gets high.
+
+**g. Switching it off.** If the server feels slow, this stops it (your settings stay in its folder):
+
+```sh
+cd ~/jevans.cloud/server && docker compose stop dispatcharr
+```
+
+Start it again with `docker compose start dispatcharr`. To remove it for good, ask Claude.
+
+**Updating:** it's pinned to one version, so `docker compose pull` keeps that version. Ask Claude for
+the newest number: it's one line in `docker-compose.yml`.
+
 ## Everyday commands
 
 ```sh
@@ -1568,6 +1667,14 @@ docker compose down            # stop everything (your settings and files stay)
 
 ## When something's wrong
 
+- **Jellyfin's Live TV shows no channels, or the tuner won't save:** check Dispatcharr is running with
+  `docker compose ps dispatcharr`, and that you made channels in its **Channels** page (step 26d): the
+  list Jellyfin reads only has channels, not every stream. If Jellyfin's log says `403` or forbidden,
+  open Dispatcharr's **Settings → Network Access** and make sure the M3U/EPG lines allow
+  `172.30.0.0/24`. Then **Refresh Guide Data** in Jellyfin.
+- **Dispatcharr keeps restarting:** `docker logs dispatcharr --tail 30`. If it was killed for memory
+  (`docker inspect dispatcharr | grep OOMKilled` says `true`), its guide is too big: trim channels and
+  guides (step 26f).
 - **qBittorrent/Prowlarr won't open:** the VPN probably isn't up. `docker logs gluetun` usually says
   why, most often a mistyped key or address in `.env`.
 - **Sonarr/Radarr say they can't reach SABnzbd:** use Host `172.30.0.19` and Port `8080`. The name
