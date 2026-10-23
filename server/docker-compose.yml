@@ -43,6 +43,7 @@ services:
       # The web pages of the apps inside the tunnel are published here, on gluetun.
       - 8080:8080 # qBittorrent
       - 9696:9696 # Prowlarr
+      - 9191:9191 # Dispatcharr
     volumes:
       - ${CONFIG_DIR}/gluetun:/gluetun
     networks:
@@ -91,6 +92,38 @@ services:
     environment:
       TZ: ${TZ}
       LOG_LEVEL: info
+    restart: unless-stopped
+
+  # ---- Live TV: Dispatcharr tidies up TV channel lists (M3U) and TV guides (EPG) and hands them to Jellyfin. ----
+  # Like a TV listings magazine editor: it takes a huge messy pile of channels, keeps only the ones you tick,
+  # matches each to its guide listings, and gives Jellyfin one neat list. Jellyfin's Live TV then plays them.
+  # Everything runs inside this one container (its own small database and queue), so there's nothing else to add.
+  # Inside the tunnel, so your TV provider sees the VPN, not your home. No VPN means no Live TV: same kill switch.
+  # Its page is published on gluetun: http://<server-ip>:9191 at home, and Jellyfin reaches it at http://gluetun:9191.
+  # Kept on a short leash below because this box is small: earlier Live TV attempts were too heavy. See README.md step 26.
+  dispatcharr:
+    # Pinned to one release. To update: change the number, then `docker compose pull dispatcharr && docker compose up -d dispatcharr`.
+    image: ghcr.io/dispatcharr/dispatcharr:0.32.0
+    container_name: dispatcharr
+    network_mode: service:gluetun
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      DISPATCHARR_ENV: aio
+      REDIS_HOST: localhost
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      DISPATCHARR_LOG_LEVEL: info
+      # Fewer helpers than the default (4 and 6): plenty for one household, and much less memory.
+      UWSGI_WORKERS: 2
+      CELERY_MAX_WORKERS: 2
+    volumes:
+      # Settings, its database, logos and logs live here.
+      - ${CONFIG_DIR}/dispatcharr:/data
+    # The leash: at most 1.5 GB of memory and 2 of the 4 CPU cores, so Jellyfin and the downloads always have room.
+    mem_limit: 1536m
+    cpus: 2
     restart: unless-stopped
 
   # ---- Everything below uses your normal connection. ----
