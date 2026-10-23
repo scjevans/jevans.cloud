@@ -1573,13 +1573,19 @@ CPU cores. Expect roughly 0.5 to 1 GB in use while it's idle. The heavy moment i
 file, so the tips in step 26f keep that small. If the server ever feels slow, step 26g switches it off
 in one line.
 
-**Privacy note.** Live TV streams go over your normal internet, not the VPN (only qBittorrent and
-Prowlarr are inside the tunnel). Your internet provider can see that you're streaming from your TV
-provider's servers, the same as watching any streaming app. If you'd rather it went through the VPN,
-ask Claude: it's a small change, but every stream then shares the VPN's speed.
+**Inside the VPN.** Like qBittorrent and Prowlarr, Dispatcharr lives inside the tunnel. Your internet
+provider only sees encrypted VPN traffic, and your TV provider sees the VPN's address, not your home's.
+Two things follow from that:
 
-At home it's at `http://192.168.1.95:9191`. Away from home, Tailscale on your phone gets you in (step 22).
-There's no public address for it.
+- **No VPN, no Live TV.** If the tunnel drops, channels stop until it's back (the same kill switch as
+  the downloads). Everything else in Jellyfin keeps working.
+- **Streams share the VPN.** A big download in qBittorrent and a live channel use the same tunnel. If a
+  channel stutters while something's downloading, pause the download. A few TV providers block VPN
+  addresses: if yours won't load any channel, `SERVER_COUNTRIES` in `.env` can pick another location.
+
+Its page is published on gluetun, so at home it's still `http://192.168.1.95:9191`. Away from home,
+Tailscale on your phone gets you in (step 22). There's no public address for it. Inside the stack,
+other apps reach it as `gluetun:9191` (like Prowlarr's `gluetun:9696`).
 
 **a. Get the new files and make the folder.**
 
@@ -1591,18 +1597,28 @@ cd ~/jevans.cloud && git pull
 mkdir -p /opt/media/config/dispatcharr
 ```
 
-**b. Start it.** The download is about 1 GB, so the first time takes a few minutes.
+**b. Start it.** Gluetun (the VPN) restarts once so it opens the new door, port 9191. That pauses
+qBittorrent and Prowlarr for a minute, then they come back on their own. The Dispatcharr download is
+about 1 GB, so the first time takes a few minutes.
 
 ```sh
-cd ~/jevans.cloud/server && docker compose up -d dispatcharr && docker compose restart homepage
+cd ~/jevans.cloud/server && docker compose up -d gluetun qbittorrent prowlarr flaresolverr dispatcharr && docker compose restart homepage
 ```
 
 ```sh
-docker compose ps dispatcharr
+docker compose ps gluetun dispatcharr
 ```
 
-It should say `Up` (or `running`). Give it a minute to set up its database the first time. The
-dashboard has a new **Dispatcharr** tile under Watch.
+Both should say `Up` (gluetun also says `healthy`). Give Dispatcharr a minute to set up its database the
+first time. The dashboard has a new **Dispatcharr** tile under Watch.
+
+Check the tunnel is up. Dispatcharr shares gluetun's connection, so gluetun's address is its address:
+
+```sh
+docker logs gluetun 2>&1 | grep -i "public ip" | tail -1
+```
+
+It should name a VPN location, not Verizon or your home town.
 
 **c. Make your login.** Open `http://192.168.1.95:9191`. The first time, it asks you to create an admin
 username and password. Save them in Vaultwarden.
@@ -1620,14 +1636,14 @@ username and password. Save them in Vaultwarden.
 **e. Connect Jellyfin.** In Jellyfin: **Dashboard → Live TV**.
 
 1. Under **Tuner Devices**, tap **+**, choose **M3U Tuner**, and in **File or URL** type
-   `http://dispatcharr:9191/output/m3u`. Save.
+   `http://gluetun:9191/output/m3u`. Save.
 2. Under **TV Guide Data Providers**, tap **+**, choose **XMLTV**, and in **File or URL** type
-   `http://dispatcharr:9191/output/epg`. Save.
+   `http://gluetun:9191/output/epg`. Save.
 3. Back on the Live TV page, tap **Refresh Guide Data** (or run **Refresh Guide** under
    **Dashboard → Scheduled Tasks**).
 
 Open Jellyfin's home page: a **Live TV** section appears with your channels and a guide. Tap a channel
-to watch. Jellyfin reaches Dispatcharr by its name, `dispatcharr`, because they're on the same network.
+to watch. Jellyfin knocks on gluetun's door, because Dispatcharr lives inside the tunnel.
 
 **f. Keep it light.** These keep memory and CPU low:
 
@@ -1668,14 +1684,14 @@ docker compose down            # stop everything (your settings and files stay)
 ## When something's wrong
 
 - **Jellyfin's Live TV shows no channels, or the tuner won't save:** check Dispatcharr is running with
-  `docker compose ps dispatcharr`, and that you made channels in its **Channels** page (step 26d): the
+  `docker compose ps dispatcharr` (and that the VPN is up: `docker logs gluetun --tail 20`), and that you made channels in its **Channels** page (step 26d): the
   list Jellyfin reads only has channels, not every stream. If Jellyfin's log says `403` or forbidden,
   open Dispatcharr's **Settings → Network Access** and make sure the M3U/EPG lines allow
   `172.30.0.0/24`. Then **Refresh Guide Data** in Jellyfin.
 - **Dispatcharr keeps restarting:** `docker logs dispatcharr --tail 30`. If it was killed for memory
   (`docker inspect dispatcharr | grep OOMKilled` says `true`), its guide is too big: trim channels and
   guides (step 26f).
-- **qBittorrent/Prowlarr won't open:** the VPN probably isn't up. `docker logs gluetun` usually says
+- **qBittorrent/Prowlarr/Dispatcharr won't open:** the VPN probably isn't up. `docker logs gluetun` usually says
   why, most often a mistyped key or address in `.env`.
 - **Sonarr/Radarr say they can't reach SABnzbd:** use Host `172.30.0.19` and Port `8080`. The name
   `sabnzbd` gets "Hostname verification failed" unless you add it under SABnzbd's Config → Special →
