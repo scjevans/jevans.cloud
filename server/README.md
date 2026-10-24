@@ -24,7 +24,7 @@ Think of it as a small restaurant:
 | **Beszel** | 3003 | Charts of the server's health (CPU, memory, drives, temperature, and what each app uses), and alerts on your phone when disk, heat or memory cross a line | The gauges on the kitchen wall, with an alarm on the fridge |
 | **Uptime Kuma** | 3004 | Checks every app and the server's health each minute, and sends a push notification to your phone when something breaks (step 22) | The night manager who phones you if the freezer stops |
 | **Vaultwarden** | (via Caddy) | Your passwords, served to the official Bitwarden apps and browser extensions | The safe in the back office |
-| **MySpeed** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
+| **Speedtest Tracker** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
 | **SyncTube** | 4200 | Watch parties: everyone sees the same YouTube video (or video link) at the same moment, with a chat (step 24) | The projectionist who starts the film for every table at once |
 | **Dispatcharr** | 9191 | Live TV: tidies channel lists and TV guides and hands them to Jellyfin's Live TV (step 26) | The listings magazine editor who picks your channels and prints the guide |
 
@@ -928,10 +928,10 @@ after the import and every so often after that (or ask me to set up a nightly on
 safety net, the web vault's **Tools** → **Export vault** → **.json (Encrypted)** makes a password-locked
 copy you could import into any Bitwarden.
 
-### 18. Internet speed history (MySpeed)
+### 18. Internet speed history (Speedtest Tracker)
 
-Your provider promises a speed. MySpeed checks whether you get it: every hour it runs a speed test
-(download, upload and ping) and writes the result down, like a bathroom scale that weighs you on a
+Your provider promises a speed. Speedtest Tracker checks whether you get it: every hour it runs a speed
+test (download, upload and ping) and writes the result down, like a bathroom scale that weighs you on a
 timer. After a few days you can see the pattern: whether evenings are slower, or a bad day was the line
 and not Jellyfin. It's home only, at `http://192.168.1.95:5216`.
 
@@ -939,38 +939,78 @@ It runs **outside** the VPN on purpose. Speed-testing through the tunnel would m
 in another city, not your Fios line. A speed test is ordinary traffic your ISP sees every day from
 millions of homes, so it gives nothing away.
 
-**a. Get the new files and start it.**
+(This step used to set up MySpeed. Its last image runs on Node.js 18, which stopped getting security
+fixes, so Speedtest Tracker took its place on the same port. It uses the same Ookla test.)
+
+**a. Get the new files and make its key.** The key scrambles the settings it saves, like the combination
+to its filing cabinet. These two lines add it, and an empty line for step c, to the bottom of `.env`:
 
 ```sh
 cd ~/jevans.cloud && git pull
 ```
 
 ```sh
-cd ~/jevans.cloud/server && docker compose up -d
+cd ~/jevans.cloud/server
 ```
 
 ```sh
-docker compose ps myspeed
+echo "SPEEDTEST_APP_KEY=base64:$(openssl rand -base64 32)" >> .env
 ```
 
-It should say `Up` (or `running`).
+```sh
+echo "SPEEDTEST_API_TOKEN=" >> .env
+```
 
-**b. Open it.** Go to `http://192.168.1.95:5216`. The first time, it asks a few questions:
+**b. Start it.** `--remove-orphans` also takes away the old MySpeed container, since it's no longer in
+the list:
 
-1. **Which speed test to use.** Pick **Ookla** (the speedtest.net one) and accept its terms. That's the
-   same test your ISP and most people use, so the numbers compare fairly.
-2. **Which server.** Leave it on automatic: it picks a nearby one.
+```sh
+docker compose up -d --remove-orphans
+```
 
-It runs its first test straight away, then every hour on its own.
+```sh
+docker compose ps speedtest-tracker
+```
 
-**c. Optional tweaks** (the gear icon top right):
+It should say `Up` (or `running`). The first start takes about a minute.
 
-- **How often:** each test uses your full speed for about 20 seconds. Hourly is fine on Fios (no data
-  cap), but if a test ever makes a film stutter, change the frequency to every 3 or 6 hours.
-- **Password:** you can skip it, since only devices at home can open the page. If you set one, the
-  numbers on the dashboard tile stop showing until the password is added there too (ask me).
+**c. Open it and change the login.** Go to `http://192.168.1.95:5216` and log in with the starter login,
+email `admin@example.com` and password `password`. Change both straight away: click the round icon top
+right, then **Profile**. Save the new login in Vaultwarden.
 
-The dashboard's **MySpeed** tile (under Home network) shows the latest download, upload and ping.
+Press **Speedtest** (top right) to run the first test now. After that it tests every hour at quarter
+past on its own. It picks a nearby Ookla server automatically.
+
+**d. Put the latest result on the dashboard tile.** In Speedtest Tracker open **API Tokens**, press
+**New API token**, name it `homepage`, tick only **Read results**, and leave it with no expiry. Copy the
+token it shows (it only shows it once). Then open `.env`:
+
+```sh
+nano ~/jevans.cloud/server/.env
+```
+
+Go to the last line, `SPEEDTEST_API_TOKEN=`, and paste the token right after the `=`. Save with Ctrl+O,
+Enter, then Ctrl+X. Then:
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d homepage
+```
+
+The dashboard's **Speedtest Tracker** tile (under Home network) shows the latest download, upload and
+ping.
+
+**e. Tidy up (optional).** If Uptime Kuma had a check for `myspeed`, edit it to `speedtest-tracker`. Old
+MySpeed results stay in `/opt/media/config/myspeed` and aren't carried over. Once you don't want them,
+this deletes them for good:
+
+```sh
+sudo rm -rf /opt/media/config/myspeed
+```
+
+**Tweaks:** each test uses your full speed for about 20 seconds. Hourly is fine on Fios (no data cap),
+but if a test ever makes a film stutter, change `SPEEDTEST_SCHEDULE` in `docker-compose.yml` to
+`"15 */6 * * *"` (every 6 hours), then `docker compose up -d speedtest-tracker`. Results older than a
+year are forgotten automatically.
 
 ### 19. Keep films and shows in English
 
@@ -1720,7 +1760,7 @@ docker compose down            # stop everything (your settings and files stay)
 - **Vaultwarden keeps restarting with "permission denied" or "read-only file system":** its folder
   belongs to root. `sudo chown -R $USER:$USER /opt/media/config/vaultwarden`, then
   `docker compose up -d vaultwarden`.
-- **MySpeed tests fail or show far below your plan:** check `docker logs myspeed`. If every test
+- **Speedtest Tracker tests fail or show far below your plan:** check `docker logs speedtest-tracker`. If every test
   fails, AdGuard may be blocking the speed test site: in AdGuard (`http://192.168.1.95:3001`) open
   **Query log**, search `speedtest`, and click **Unblock** on any red line. One slow result is normal;
   a slow pattern at the same hour usually means someone is busy downloading then.
