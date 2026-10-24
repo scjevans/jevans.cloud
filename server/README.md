@@ -1490,7 +1490,8 @@ Videos uploaded from a device are kept in that folder too, capped at 3 GB (`cach
 
 **Updating:** SyncTube is built, not pulled, so `docker compose pull` skips it. Ask Claude for the newest
 version: it's one line in `docker-compose.yml` (the long code after `#`), then
-`docker compose up -d --build synctube`.
+`docker compose up -d --build synctube`. The Node.js that runs it is pinned separately, in the last
+`FROM` line of `synctube/Dockerfile`; when Node.js puts out a security release, that's the line to bump.
 
 ### 25. Watch parties with friends anywhere (watch.jevans.cloud)
 

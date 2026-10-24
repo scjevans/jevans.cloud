@@ -505,12 +505,16 @@ services:
 
   # ---- Watch parties: SyncTube plays the same YouTube video (or any video link) for everyone at once, with a chat. ----
   # Like a cinema projectionist: whoever holds the "Leader" button presses play or pause, and every screen follows.
-  # There's no ready-made image, so Docker builds it from the author's code, pinned to one exact version.
-  # To update: change the long code after "#" to a newer commit, then `docker compose up -d --build synctube`.
+  # There's no ready-made image, so Docker builds it from the author's code, pinned to one exact version,
+  # using our recipe in synctube/Dockerfile so it runs on a patched Node.js we pick.
+  # To update SyncTube: change the long code after "#" to a newer commit, then `docker compose up -d --build synctube`.
   # At home: http://<server-ip>:4200. From anywhere: https://watch.jevans.cloud through Caddy,
   # behind a shared password. See README.md steps 24 and 25.
   synctube:
-    build: https://github.com/RblSb/SyncTube.git#7b0ea5877eefcfe70744683a4273b52b3e34037a
+    build:
+      context: ./synctube
+      additional_contexts:
+        synctube-src: https://github.com/RblSb/SyncTube.git#7b0ea5877eefcfe70744683a4273b52b3e34037a
     container_name: synctube
     environment:
       TZ: ${TZ}
