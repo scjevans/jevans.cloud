@@ -328,20 +328,33 @@ services:
         ipv4_address: 172.30.0.15
     restart: unless-stopped
 
-  # ---- The speed check: MySpeed tests your home internet on a timer and keeps the results. ----
+  # ---- The speed check: Speedtest Tracker tests your home internet on a timer and keeps the results. ----
   # Like a bathroom scale that weighs you every hour and writes it down, so you can see the trend.
   # Outside the VPN on purpose: it should measure your real Fios line, not the tunnel.
-  # Home only, no Caddy site: http://<server-ip>:5216. See README.md step 18.
-  myspeed:
-    image: germannewsmaker/myspeed:latest
-    container_name: myspeed
+  # Replaced MySpeed, whose last image ran on Node.js 18, which no longer gets security fixes.
+  # Home only, no Caddy site: http://<server-ip>:5216 (MySpeed's old port). See README.md step 18.
+  speedtest-tracker:
+    image: lscr.io/linuxserver/speedtest-tracker:latest
+    container_name: speedtest-tracker
     environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
       TZ: ${TZ}
+      DISPLAY_TIMEZONE: ${TZ}
+      # The key it scrambles its saved settings with. README.md step 18a makes it.
+      APP_KEY: ${SPEEDTEST_APP_KEY}
+      APP_URL: http://${SERVER_IP}:5216
+      # Keeps its notebook in one small file (SQLite), so it needs no database container.
+      DB_CONNECTION: sqlite
+      # Every hour, at quarter past. Each test uses your full speed for about 20 seconds.
+      SPEEDTEST_SCHEDULE: "15 * * * *"
+      # Forget results older than a year, so the notebook stays small.
+      PRUNE_RESULTS_OLDER_THAN: 365
     ports:
-      - 5216:5216
+      - 5216:80
     volumes:
-      # Every test result lives here.
-      - ${CONFIG_DIR}/myspeed:/myspeed/data
+      # Every test result and its settings live here.
+      - ${CONFIG_DIR}/speedtest-tracker:/config
     networks:
       media:
         # So the dashboard can show the latest result on its tile.
@@ -404,6 +417,8 @@ services:
       HOMEPAGE_ALLOWED_HOSTS: ${SERVER_IP}:3000,home.jevans.cloud
       HOMEPAGE_VAR_SERVER_IP: ${SERVER_IP}
       HOMEPAGE_VAR_TZ: ${TZ}
+      # Lets the Speedtest Tracker tile read the latest result (README.md step 18c).
+      HOMEPAGE_VAR_SPEEDTEST_TOKEN: ${SPEEDTEST_API_TOKEN}
     ports:
       - 3000:3000
     volumes:
