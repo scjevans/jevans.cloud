@@ -14,16 +14,29 @@
 		TXT 200
 }
 
-# Security headers for the two public sites (assessment findings 6 and 7).
+# Security headers for the public sites (assessment findings 6 and 7, and finding F2 of the October 25 report).
 # Tells browsers: always use HTTPS, don't guess file types, don't let other sites frame these pages,
 # and don't share the full page address with other sites. Also hides which server software sits behind Caddy.
+(security_header_list) {
+	Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	X-Content-Type-Options "nosniff"
+	X-Frame-Options "SAMEORIGIN"
+	Content-Security-Policy "frame-ancestors 'self'; base-uri 'self'; object-src 'none'"
+	Referrer-Policy "strict-origin-when-cross-origin"
+	Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+}
+
+# The headers go on twice, like a stamp on the envelope and again on the letter inside.
+# The first set goes on right away, so Caddy's own replies get it too, such as the password prompt on watch.
+# The second set waits until the reply is leaving and overwrites whatever Jellyfin or Seerr sent,
+# so each header appears once. Removing Server and X-Powered-By only works in that second set.
 (security_headers) {
 	header {
-		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "SAMEORIGIN"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()"
+		import security_header_list
+	}
+	header {
+		defer
+		import security_header_list
 		-Server
 		-X-Powered-By
 	}
