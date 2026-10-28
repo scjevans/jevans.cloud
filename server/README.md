@@ -27,6 +27,7 @@ Think of it as a small restaurant:
 | **Speedtest Tracker** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
 | **SyncTube** | 4200 | Watch parties: everyone sees the same YouTube video (or video link) at the same moment, with a chat (step 24) | The projectionist who starts the film for every table at once |
 | **Dispatcharr** | 9191 | Live TV: tidies channel lists and TV guides and hands them to Jellyfin's Live TV (step 26) | The listings magazine editor who picks your channels and prints the guide |
+| **SuggestArr** | 5000 | Looks at what you watched and asks Seerr for similar films and shows (step 28) | The regular's favourite waiter: "you liked the lasagne, try the ravioli" |
 
 ### Why the tunnel matters
 
@@ -1807,6 +1808,72 @@ The CAA line is fine for GitHub Pages too, which also gets its certificate from 
 - Jellyfin and Seerr show their version number to anyone (finding F5). Both apps do that by design.
 - No login rate limit in Caddy (finding F6). It needs a custom Caddy build. Jellyfin already locks an
   account after a few wrong passwords, so long unique passwords cover it for now.
+
+### 28. Recommendations from what you watch (SuggestArr)
+
+SuggestArr is the waiter who remembers your usual. It reads what each person watched in Jellyfin, looks
+up similar films and shows on TMDb (the big free film database), and asks Seerr for them. From there it's
+the normal path: Seerr hands the request to Radarr or Sonarr, and it turns up in Jellyfin.
+
+It runs a small job now and then (you pick how often), so it's light: it's capped at 512 MB of memory.
+At home it's at `http://192.168.1.95:5000`, and away from home through Tailscale. It isn't on the internet.
+
+Because it adds things to your library on its own, this step sets it up to **ask you first**: its picks
+wait on a review page until you tap send. Your media drive is filling fast already, so start small.
+
+**a. Get the new files and start it.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d suggestarr && docker compose restart homepage
+```
+
+```sh
+docker compose ps suggestarr
+```
+
+It should say `Up` (or `running`). Docker makes its folder (`/opt/media/config/suggestarr`) by itself.
+
+**b. Collect three keys.** Keep this list in Vaultwarden, then paste each one in step c.
+
+- **TMDb key** (free). Sign up at themoviedb.org, then open your avatar → **Settings → API**, ask for a
+  developer key, and copy the **API Key** (the short one). If you already made one for Jellyfin, reuse it.
+- **Jellyfin key.** In Jellyfin: **Dashboard → API Keys → +**, name it `SuggestArr`, copy it.
+- **Seerr key.** In Seerr: **Settings → General**, copy the **API Key**.
+
+**c. Run the setup page.** Open `http://192.168.1.95:5000`.
+
+1. Make the first admin account (your login for SuggestArr only). Save the password in Vaultwarden.
+2. Paste the TMDb key.
+3. Pick **Jellyfin**. Address: `http://jellyfin:8096`, plus the Jellyfin key. Use **Test** to check it.
+4. Seerr address: `http://seerr:5055`, plus the Seerr key. **Test** again.
+5. Pick which Jellyfin users to learn from, and your Movies and TV libraries. Save.
+
+Use those container names exactly, not `localhost`: inside SuggestArr's box, `localhost` means itself.
+
+**d. Make it ask before it sends anything.** Open **Settings → Advanced** and turn on **Approve requests
+before sending them to Seer**. Save. Now its picks land on its **Requests** page, where you send, reject,
+or blacklist each one.
+
+**e. Make two small jobs.** Open **Jobs**. Make one for movies and one for TV, each running **once a day**.
+Good starting settings:
+
+- Movies: 5 similar per film watched. TV: 2 per show, and **first season only**, so a liked show
+  doesn't pull in ten seasons.
+- Minimum TMDb rating `6.5` with at least `100` votes, so you only get films people liked.
+- Original language **English**, to match step 19.
+- Region `US` and tick the streaming services you already pay for, so it skips things you can already watch there.
+
+Press **Preview** (or dry run) first to see what it would pick, then turn the job on.
+
+**Updating:** it's pinned to one version, so `docker compose pull` won't change it. Ask Claude to check for a
+newer version: it's the `image:` line under `suggestarr` in `docker-compose.yml`.
+
+**If you want it gone:** `docker compose rm -sf suggestarr`, then delete its block from `docker-compose.yml`.
+Anything it already requested stays in your library like any other request.
 
 ## Everyday commands
 
