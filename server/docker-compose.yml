@@ -548,3 +548,28 @@ services:
       media:
         ipv4_address: 172.30.0.22
     restart: unless-stopped
+
+  # ---- Recommendations: SuggestArr looks at what you watched in Jellyfin and asks Seerr for similar films and shows. ----
+  # Like a video shop clerk who remembers what you rented: "you liked that, so I set this aside for you".
+  # It finds look-alikes through TMDb and sends them to Seerr, which hands them to Sonarr/Radarr as usual.
+  # Everything is set up in its own web page (no .env lines needed). At home: http://<server-ip>:5000.
+  # LAN/Tailscale only. See README.md step 28.
+  suggestarr:
+    image: ciuse99/suggestarr:v3.2.0
+    container_name: suggestarr
+    environment:
+      TZ: ${TZ}
+      SUGGESTARR_PORT: 5000
+      LOG_LEVEL: INFO
+    ports:
+      - 5000:5000
+    volumes:
+      # Settings (config.yaml), its database of requests, and its login key (secret.key) live here.
+      - ${CONFIG_DIR}/suggestarr:/app/config/config_files
+    # It only runs a small job now and then, so keep it on a short leash on this 7 GB box.
+    mem_limit: 512m
+    cpus: 1
+    networks:
+      media:
+        ipv4_address: 172.30.0.23
+    restart: unless-stopped

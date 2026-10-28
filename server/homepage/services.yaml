@@ -33,6 +33,12 @@
         description: Live TV channels and guide for Jellyfin
         server: docker
         container: dispatcharr
+    - SuggestArr:
+        icon: mdi-lightbulb-on
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:5000
+        description: Suggests films and shows like the ones you watched
+        server: docker
+        container: suggestarr
 
 - Find:
     - Sonarr:
