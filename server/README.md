@@ -1007,6 +1007,33 @@ this deletes them for good:
 sudo rm -rf /opt/media/config/myspeed
 ```
 
+**f. Always test against the same server (optional).** Left alone, Ookla picks a nearby server each time,
+and sometimes that's Verizon's own. A test to your own provider's server never leaves its network, like
+timing the drive to the end of your street instead of across town. A server run by another company
+(a hosting firm, another carrier or a university) in a nearby city also tests the road out of Verizon,
+which is where slowdowns would show. This lists the servers near you with their IDs:
+
+```sh
+docker exec -it speedtest-tracker speedtest -L --accept-license --accept-gdpr
+```
+
+Open your settings file:
+
+```sh
+cd ~/jevans.cloud/server && nano .env
+```
+
+Find the line `SPEEDTEST_SERVERS=` (add it at the bottom if it isn't there) and type the ID right after
+the `=`. Several IDs separated by commas work too. Save with Ctrl+O, Enter, then Ctrl+X. Restart it so
+it reads the change:
+
+```sh
+docker compose up -d speedtest-tracker
+```
+
+The next test, and every one after, uses that server. The **Speedtest** button still lets you try a
+different one once.
+
 **Tweaks:** each test uses your full speed for about 20 seconds. Hourly is fine on Fios (no data cap),
 but if a test ever makes a film stutter, change `SPEEDTEST_SCHEDULE` in `docker-compose.yml` to
 `"15 */6 * * *"` (every 6 hours), then `docker compose up -d speedtest-tracker`. Results older than a
