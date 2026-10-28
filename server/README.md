@@ -1713,6 +1713,74 @@ Start it again with `docker compose start dispatcharr`. To remove it for good, a
 **Updating:** it's pinned to one version, so `docker compose pull` keeps that version. Ask Claude for
 the newest number: it's one line in `docker-compose.yml`.
 
+### 27. Security check-up, October 2026
+
+A second outside test (October 25) found nothing serious. This step closes what it did find. Part **a**
+is the only one that touches the server; **b** and **c** are clicks in your router and in Porkbun.
+
+**a. Stronger security headers (finding F2).** The password prompt on `watch.jevans.cloud` went out
+without the "always use HTTPS" header and its friends, because Caddy only added them to replies that
+reached SyncTube. The Caddyfile now stamps them on every reply, and adds one more (a
+Content-Security-Policy that stops other websites from framing your pages). Back up, pull, and restart Caddy:
+
+```sh
+cp ~/jevans.cloud/server/caddy/Caddyfile ~/Caddyfile.before-headers
+```
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d --force-recreate caddy
+```
+
+```sh
+curl -sI https://watch.jevans.cloud | grep -i strict-transport
+```
+
+That last one should print a `strict-transport-security` line. Then open Jellyfin and Seerr in a browser
+and click around: if a page looks broken, the new Content-Security-Policy line is the first suspect.
+
+**b. Close port 21 on the router (finding F1).** Something answers on port 21 (the old file-transfer
+port) at your home's public address, but not inside your home, so it's set on the router, not the server.
+On your PC at home, open `http://192.168.1.1` and sign in, then look in these places:
+
+- **Firewall → Port Forwarding.** Delete any rule for port 21 or "FTP". Keep the ones for 80 and 443.
+- **Firewall → DMZ Host.** It should be off.
+- Any **USB, storage, or file sharing / FTP** setting: turn it off.
+
+To check from outside, put your laptop on your phone's hotspot (Wi-Fi off at home), open PowerShell, and run:
+
+```powershell
+Test-NetConnection 72.94.157.137 -Port 21
+```
+
+`TcpTestSucceeded : False` means it's closed. That address is your home's public IP; if it ever
+changes, use the new one.
+
+**c. Stop strangers sending email "from" jevans.cloud (finding F3), and lock down certificates.** You don't
+use jevans.cloud for email, so tell the world that. In Porkbun, open DNS for `jevans.cloud` and add:
+
+| Type | Host | Answer | What it says |
+| ---- | ---- | ------ | ------------ |
+| `TXT` | *(blank)* | `v=spf1 -all` | No server is allowed to send mail for this domain. |
+| `TXT` | `_dmarc` | `v=DMARC1; p=reject;` | Mail that claims to be from here: bin it. |
+| `MX` | *(blank)* | `.` with priority `0` | This domain takes no mail at all. |
+| `CAA` | *(blank)* | `0 issue "letsencrypt.org"` | Only Let's Encrypt may make certificates for it. |
+
+If Porkbun won't take the single dot for the MX record, skip that one: the first two do the real work.
+The CAA line is fine for GitHub Pages too, which also gets its certificate from Let's Encrypt.
+
+**Left as they are, on purpose:**
+
+- `home` and `vault` answer the internet with an empty reply. That's the home-only rule from steps 9 and 17
+  doing its job. Their public DNS records stay, because Caddy needs them to renew their certificates, and
+  the Bitwarden apps need a real certificate.
+- Jellyfin and Seerr show their version number to anyone (finding F5). Both apps do that by design.
+- No login rate limit in Caddy (finding F6). It needs a custom Caddy build. Jellyfin already locks an
+  account after a few wrong passwords, so long unique passwords cover it for now.
+
 ## Everyday commands
 
 ```sh
