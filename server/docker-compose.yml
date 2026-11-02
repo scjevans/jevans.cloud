@@ -172,6 +172,10 @@ services:
     volumes:
       - ${CONFIG_DIR}/sabnzbd:/config
       - ${DATA_DIR}:/data
+      # Half-finished downloads live on the server's own (internal) drive, so the slow
+      # repair-and-unpack work doesn't fight over the USB media drive (README.md step 29).
+      # Finished files still land in /data/usenet/complete, so imports stay instant.
+      - ${USENET_INCOMPLETE_DIR:-/opt/media/usenet-incomplete}:/incomplete-downloads
     networks:
       media:
         # Sonarr and Radarr reach it by this address (README.md step 20).
