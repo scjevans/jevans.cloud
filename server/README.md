@@ -1875,6 +1875,104 @@ newer version: it's the `image:` line under `suggestarr` in `docker-compose.yml`
 **If you want it gone:** `docker compose rm -sf suggestarr`, then delete its block from `docker-compose.yml`.
 Anything it already requested stays in your library like any other request.
 
+### 29. A nightly backup of every app's settings
+
+Your films live on the media drive, but everything that makes the server *yours* lives in
+`/opt/media/config` on the small system drive: Sonarr and Radarr's lists and indexers, Jellyfin's users
+and watch history, your Vaultwarden passwords, AdGuard's rules, Uptime Kuma's monitors. If that drive
+died tonight you'd have the films but none of the setup. This step copies all of it to the media drive
+every night at 4:15 AM, and keeps the last 14 nights.
+
+How it copies databases safely: think of photographing a busy kitchen. A photo of cooks mid-stride
+comes out blurred, and a database copied while the app is writing to it can come out broken. So the
+script takes a slow first photo while everyone keeps working, then asks the apps with databases to
+freeze for a few seconds while it takes a quick second photo of only the blurry bits. Then everyone
+carries on. Caddy, AdGuard and the VPN tunnel never stop, so the house's internet and the public sites
+stay up the whole time.
+
+What's in each night's backup (one `.tar.gz` file in `/data/backups/config`):
+
+- Every app's folder in `/opt/media/config`, minus things that come back by themselves: posters
+  and artwork, caches, logs, and the apps' own zip backups.
+- Your `.env` file and your scheduled jobs (`crontab`), so the passwords and keys come back too.
+
+Because those hold passwords, the folder and files are readable by the `root` user only. They never go
+near GitHub.
+
+**a. Get the new files.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+The copying tool `rsync` is almost always there already; this makes sure:
+
+```sh
+sudo apt install -y rsync
+```
+
+**b. Make an alarm for a missed night.** In Uptime Kuma (`http://192.168.1.95:3004`): **Add New
+Monitor**, type **Push**, name `Nightly backup`, **Heartbeat Interval** `90000` (25 hours, so one
+missed night turns it red). Copy the **Push URL** it shows, then **Save**. It will be red until the
+first backup; that's expected.
+
+Add the URL to your `.env`. Run this, paste the URL when it asks, and press Enter:
+
+```sh
+cd ~/jevans.cloud/server && read -p "Push URL: " u && echo "BACKUP_PUSH_URL='$u'" >> .env
+```
+
+**c. Try it once now.** It asks for your password (it needs `root` to read every app's folder). The
+first run copies everything, so give it a few minutes; the apps only pause for a few seconds near the
+end. Later nights are much quicker, because only what changed gets copied.
+
+```sh
+sudo ~/jevans.cloud/server/scripts/backup-config.sh
+```
+
+It finishes with a line like `Done: config-2026-11-03_0415.tar.gz is 850M, 1 backups kept`, and
+the `Nightly backup` monitor turns green. Check everything came back up:
+
+```sh
+cd ~/jevans.cloud/server && docker compose ps
+```
+
+**d. Run it every night.** This adds one line to `root`'s scheduled jobs, at 4:15 AM, with a log:
+
+```sh
+sudo sh -c '( crontab -l 2>/dev/null; echo "15 4 * * * /home/mediabox/jevans.cloud/server/scripts/backup-config.sh >> /var/log/config-backup.log 2>&1" ) | crontab -'
+```
+
+Check it's there:
+
+```sh
+sudo crontab -l
+```
+
+**e. Getting settings back.** If an app breaks after an update or a wrong click, put back last
+night's copy of just that app:
+
+```sh
+sudo ~/jevans.cloud/server/scripts/restore-config.sh
+```
+
+It shows the backups (newest first) and asks which night, then lists the apps and asks which one, then
+checks with you before changing anything. It stops that app, moves its current folder aside to
+something like `/opt/media/config/sonarr.before-restore-2026-11-04_2130` (nothing is deleted, so you can
+always go back), puts the backup in its place, and starts the app. Once the app works, you can delete the
+`before-restore` folder.
+
+Two things to know: a restored Sonarr or Radarr re-downloads its posters on its own, and a restored
+Jellyfin rescans its artwork, so pictures can be missing for a while. And your `.env` lives in the backup
+as `extras/server.env`; ask Claude to help if you ever need that one back.
+
+**Settings, if you want them** (in `.env`, all optional): `BACKUP_KEEP_DAYS=30` keeps 30 nights instead
+of 14. `BACKUP_DIR` changes where they go.
+
+**Next step, later:** these backups live in the same box as the system drive, so they survive the
+system drive dying but not the whole server being lost, stolen or flooded. An encrypted copy somewhere
+else (another computer, or cloud storage) covers that. Ask Claude when you want it.
+
 ## Everyday commands
 
 ```sh
@@ -1938,6 +2036,11 @@ docker compose down            # stop everything (your settings and files stay)
 - **The 192.168.1.95 addresses don't open away from home:** Tailscale must be on in the phone app, and
   the `192.168.1.95/32` route approved in the Tailscale admin page (step 22g). `tailscale status` on
   the server should list your phone.
+- **"Nightly backup" is red in Uptime Kuma:** look at the end of the log with
+  `sudo tail -20 /var/log/config-backup.log`. `FAILED: the media drive isn't mounted at /data` means the
+  drive dropped off (see the "Media drive plugged in" monitor). `less than 5 GB free` means the media
+  drive is nearly full. No log at all means the cron line from step 29d is missing: `sudo crontab -l`.
+  If an app stayed stopped after a failed backup, `docker compose up -d` starts everything.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).
