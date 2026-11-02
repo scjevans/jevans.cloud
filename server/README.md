@@ -50,7 +50,7 @@ Everything shares one `/data` folder, on one drive:
 │   ├── movies
 │   └── tv
 ├── usenet          SABnzbd downloads land here (step 20)
-│   ├── incomplete
+│   ├── incomplete  (old spot; half-finished downloads now go to the internal drive, step 29)
 │   └── complete
 │       ├── movies
 │       └── tv
@@ -79,7 +79,7 @@ cd jevans.cloud/server
 ### 2. Make the folders
 
 ```sh
-sudo mkdir -p /data/torrents/{movies,tv} /data/usenet/incomplete /data/usenet/complete/{movies,tv} /data/media/{movies,tv} /opt/media/config
+sudo mkdir -p /data/torrents/{movies,tv} /data/usenet/incomplete /data/usenet/complete/{movies,tv} /data/media/{movies,tv} /opt/media/config /opt/media/usenet-incomplete
 sudo chown -R $USER:$USER /data /opt/media
 mkdir -p /opt/media/config/seerr && sudo chown 1000:1000 /opt/media/config/seerr
 mkdir -p /opt/media/config/beszel/data /opt/media/config/beszel/socket /opt/media/config/beszel-agent
@@ -1131,8 +1131,9 @@ cd ~/jevans.cloud/server && docker compose up -d
 
 1. Host: the provider's server address. Username and password: yours.
 2. Tick **SSL**, port **563**. Connections: the number your plan allows (8 to 20 is plenty).
-3. Click **Test Server**, then Next. On the folders page, put `/data/usenet/incomplete` for
-   temporary downloads and `/data/usenet/complete` for completed ones.
+3. Click **Test Server**, then Next. On the folders page, put `/incomplete-downloads` for
+   temporary downloads and `/data/usenet/complete` for completed ones (step 29 explains why
+   the temporary folder isn't on the media drive).
 
 Then, in the gear icon (Config):
 
@@ -1150,8 +1151,8 @@ API key, Test, Save. Prowlarr passes it to Sonarr and Radarr on its own, as with
 the default one and set Preferred Protocol to **Usenet**. They'll still use torrents when Usenet
 doesn't have something.
 
-When a download finishes, Sonarr and Radarr move it into `/data/media`. It's on the same drive, so
-the move is instant. Nobody needs to seed a Usenet file, so the copy in `usenet/complete` goes away.
+When a download finishes, Sonarr and Radarr move it into `/data/media`. The finished folder is on the
+same drive, so the move is instant (step 29 keeps it that way). Nobody needs to seed a Usenet file, so the copy in `usenet/complete` goes away.
 
 The dashboard's **SABnzbd** tile is under Download.
 
@@ -1874,6 +1875,103 @@ newer version: it's the `image:` line under `suggestarr` in `docker-compose.yml`
 
 **If you want it gone:** `docker compose rm -sf suggestarr`, then delete its block from `docker-compose.yml`.
 Anything it already requested stays in your library like any other request.
+
+### 29. Faster Usenet processing (half-finished downloads on the internal drive)
+
+When a Usenet download finishes, SABnzbd still has work to do before Sonarr or Radarr see it. It
+**checks** every piece, **repairs** any broken ones (par2), then **unpacks** the archive (unrar).
+All three read and write the whole file, sometimes more than once. On a USB hard drive that all
+happens on one drive, through one USB cable, while Jellyfin is also reading from it.
+
+Think of a kitchen with one small counter. You're unpacking the shopping, checking for broken eggs
+and putting things in the cupboard, all on the same counter while someone else is cooking on it.
+This step gives SABnzbd its own counter (the server's internal drive) for the messy work. Only the
+finished, unpacked file gets carried to the cupboard (the media drive), in one trip.
+
+What changes:
+
+| | Before | After |
+| - | ------ | ----- |
+| Downloading, checking, repairing | USB media drive | Internal drive |
+| Unpacking | Reads and writes the USB drive at once | Reads the internal drive, writes the USB drive |
+| Finished files | `/data/usenet/complete` | Same place |
+| Sonarr/Radarr import | Instant | Still instant |
+
+The import stays instant because the **finished** folder is still on the media drive, next to
+your library. Only the half-finished folder moved.
+
+**a. Check the internal drive has room.** It needs space for whatever is downloading at once.
+A rough rule: at least **double your biggest download**, so 100 GB free is comfortable if you
+grab 4K films, 30 GB if not.
+
+```sh
+df -h / /opt/media /data
+```
+
+Look at the **Avail** column. The first two lines should both be your internal drive (same size).
+If `/opt/media` shows 7.3T, it's on the media drive and this step won't help: stop here and tell Claude.
+
+This shows whether the internal drive is an SSD. `ROTA 0` means SSD (best), `1` means a spinning disk
+(still helps, because the work is split across two drives instead of one):
+
+```sh
+lsblk -d -o NAME,SIZE,ROTA,TRAN
+```
+
+The media drive should show `usb` under TRAN.
+
+**b. Wait for SABnzbd's queue to be empty.** Open `http://192.168.1.95:8085`. If anything is
+downloading, press the **pause** button at the top and let anything still processing finish.
+Changing the folder mid-download can leave a job stranded.
+
+**c. Get the new files and make the folder.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+sudo mkdir -p /opt/media/usenet-incomplete && sudo chown $USER:$USER /opt/media/usenet-incomplete
+```
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d sabnzbd
+```
+
+**d. Point SABnzbd at it.** In SABnzbd: gear icon (Config) → **Folders**.
+
+1. **Temporary Download Folder:** `/incomplete-downloads`
+2. **Minimum Free Space for Temporary Download Folder:** `20G`. SABnzbd pauses itself instead of
+   filling up the internal drive (a full system drive can stop the whole server).
+3. Leave **Completed Download Folder** as `/data/usenet/complete`.
+4. **Save Changes**.
+
+**e. Turn on Direct Unpack.** Config → **Switches** → tick **Direct Unpack** → Save. SABnzbd then
+starts unpacking while the last pieces are still downloading, like starting to put the shopping
+away while the rest is still in the car. If a file turns out to be broken, it falls back to the
+normal repair-then-unpack, so nothing is lost.
+
+**f. Un-pause** SABnzbd (the play button at the top).
+
+**g. Tidy up the old folder.** Once the next download has gone through fine, the old temporary
+folder on the media drive isn't used any more. This shows if anything is left in it:
+
+```sh
+ls -la /data/usenet/incomplete
+```
+
+If it's empty, you can leave it or remove it:
+
+```sh
+rmdir /data/usenet/incomplete
+```
+
+**How to tell it worked:** in SABnzbd's **History**, click a finished job. The times for
+**Repair** and **Unpack** should be shorter than older jobs of a similar size. Beszel's disk chart
+for the media drive should also show less busy time while a download is processing.
+
+**If you want to undo it:** set Temporary Download Folder back to `/data/usenet/incomplete`
+(make it again with `mkdir` if you removed it) and untick Direct Unpack.
 
 ### 30. A nightly backup of every app's settings
 
