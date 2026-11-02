@@ -1,5 +1,5 @@
 #!/bin/bash
-# Puts one app's settings back from a nightly backup (README.md step 29e).
+# Puts one app's settings back from a nightly backup (README.md step 30e).
 #
 # It asks two questions (which night, which app), then: stops that app, moves its current
 # folder aside (nothing is deleted, so you can always go back), unpacks the backup in its

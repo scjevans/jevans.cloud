@@ -1,5 +1,5 @@
 #!/bin/bash
-# Nightly backup of every app's settings (README.md step 29).
+# Nightly backup of every app's settings (README.md step 30).
 #
 # Like photographing a busy kitchen: first a slow, careful photo while everyone keeps working
 # (blurry in places), then everyone freezes for a few seconds while a quick second photo fixes

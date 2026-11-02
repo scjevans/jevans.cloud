@@ -1875,7 +1875,7 @@ newer version: it's the `image:` line under `suggestarr` in `docker-compose.yml`
 **If you want it gone:** `docker compose rm -sf suggestarr`, then delete its block from `docker-compose.yml`.
 Anything it already requested stays in your library like any other request.
 
-### 29. A nightly backup of every app's settings
+### 30. A nightly backup of every app's settings
 
 Your films live on the media drive, but everything that makes the server *yours* lives in
 `/opt/media/config` on the small system drive: Sonarr and Radarr's lists and indexers, Jellyfin's users
@@ -2039,7 +2039,7 @@ docker compose down            # stop everything (your settings and files stay)
 - **"Nightly backup" is red in Uptime Kuma:** look at the end of the log with
   `sudo tail -20 /var/log/config-backup.log`. `FAILED: the media drive isn't mounted at /data` means the
   drive dropped off (see the "Media drive plugged in" monitor). `less than 5 GB free` means the media
-  drive is nearly full. No log at all means the cron line from step 29d is missing: `sudo crontab -l`.
+  drive is nearly full. No log at all means the cron line from step 30d is missing: `sudo crontab -l`.
   If an app stayed stopped after a failed backup, `docker compose up -d` starts everything.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
