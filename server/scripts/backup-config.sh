@@ -1,5 +1,6 @@
 #!/bin/bash
 # Nightly backup of every app's settings (README.md step 30).
+# Afterwards it runs offsite-backup.sh (step 31) to send an encrypted copy off the server.
 #
 # Like photographing a busy kitchen: first a slow, careful photo while everyone keeps working
 # (blurry in places), then everyone freezes for a few seconds while a quick second photo fixes
@@ -124,4 +125,10 @@ say "Done: $(basename "$archive") is $size, $count backups kept"
 
 if [ -n "$PUSH_URL" ]; then
   curl -fsS -m 10 --retry 6 --retry-delay 20 --retry-all-errors -o /dev/null "$PUSH_URL" || say "WARNING: couldn't reach Uptime Kuma"
+fi
+
+# Then the encrypted copy off the server (README.md step 31), if it's set up. If it fails,
+# tonight's local backup above still counts: its own Uptime Kuma monitor buzzes instead.
+if [ -n "$(env_value OFFSITE_REPOSITORY)" ]; then
+  "$SERVER_DIR/scripts/offsite-backup.sh" || say "WARNING: the off-server copy failed (see the lines above)"
 fi
