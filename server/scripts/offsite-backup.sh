@@ -9,6 +9,7 @@
 # each night sends a few megabytes, not the whole backup.
 #
 #   sudo offsite-backup.sh            back up now (backup-config.sh runs this every night)
+#   sudo offsite-backup.sh connect-drive   link Google Drive, once (asks for rclone authorize's output)
 #   sudo offsite-backup.sh init       make the encrypted store, once
 #   sudo offsite-backup.sh list       show the saved copies
 #   sudo offsite-backup.sh check      prove a slice of the stored data can be read back
@@ -25,12 +26,37 @@ PUSH_URL="$(env_value OFFSITE_PUSH_URL)"
 export RESTIC_REPOSITORY="$(env_value OFFSITE_REPOSITORY)"
 export RESTIC_PASSWORD="$(env_value OFFSITE_PASSWORD)"
 export RESTIC_CACHE_DIR=/var/cache/restic
+# Google Drive answers "500 Internal Server Error" when asked for too much at once, so rclone
+# (which restic talks to Drive through) takes it gently: a few requests a second, and it
+# retries each failed request up to 20 times before giving up.
+export RCLONE_TPSLIMIT=4 RCLONE_LOW_LEVEL_RETRIES=20 RCLONE_DRIVE_PACER_MIN_SLEEP=200ms
+RESTIC_OPTS=(-o rclone.connections=2)
 
 say() { echo "$(date '+%F %T') offsite: $*"; }
 fail() { say "FAILED: $*"; exit 1; }
 trap 'say "FAILED on line $LINENO of $0"' ERR
 
 [ "$(id -u)" = 0 ] || fail "run it with sudo"
+
+if [ "${1:-}" = connect-drive ]; then
+  command -v rclone >/dev/null || fail "rclone isn't installed: sudo apt install -y rclone"
+  read -rp "Paste what rclone authorize printed between the arrows: " t
+  # Newer rclone prints it base64-wrapped ("eyJ..."), older prints the raw {"access_token":...}.
+  tok=$(python3 -c '
+import sys, json, base64
+s = sys.argv[1].strip()
+if s.startswith("{"):
+    d = json.loads(s)
+else:
+    s = s.replace("+", "-").replace("/", "_")
+    d = json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))
+print(d["token"] if "token" in d else json.dumps(d))' "$t") || fail "that doesn't look like rclone's output, copy it again"
+  rclone config create gdrive drive scope=drive.file use_trash=false token="$tok" --non-interactive >/dev/null
+  rclone lsd gdrive: >/dev/null || fail "Google didn't accept it: run rclone authorize on the laptop again"
+  say "Google Drive connected"
+  exit 0
+fi
+
 command -v restic >/dev/null || fail "restic isn't installed: sudo apt install -y restic"
 [ -n "$RESTIC_REPOSITORY" ] || fail "OFFSITE_REPOSITORY is blank in $ENV_FILE (README.md step 31)"
 [ -n "$RESTIC_PASSWORD" ] || fail "OFFSITE_PASSWORD is blank in $ENV_FILE (README.md step 31)"
@@ -40,21 +66,21 @@ esac
 
 case "${1:-backup}" in
   init)
-    restic init
+    restic "${RESTIC_OPTS[@]}" init
     say "Encrypted store ready. Keep OFFSITE_PASSWORD somewhere off the server: without it the copy can't be opened."
     ;;
 
   list)
-    restic snapshots
+    restic "${RESTIC_OPTS[@]}" snapshots
     ;;
 
   check)
-    restic check --read-data-subset=5%
+    restic "${RESTIC_OPTS[@]}" check --read-data-subset=5%
     ;;
 
   restore)
     target=/data/backups/offsite-restore
-    restic restore latest --target "$target"
+    restic "${RESTIC_OPTS[@]}" restore latest --target "$target"
     chmod 700 "$target"
     say "Downloaded to $target (config/ is every app's folder, extras/server.env is your .env)"
     ;;
@@ -65,18 +91,25 @@ case "${1:-backup}" in
     # The .staging folder is last night's backup unpacked. Backing that up (not the .tar.gz)
     # is what lets restic skip everything that hasn't changed.
     cd "$BACKUP_DIR/.staging"
-    restic unlock   # Clears a lock left behind if a past run was cut off (only stale ones).
-    restic backup --host jevans-server --tag nightly config extras
+    restic "${RESTIC_OPTS[@]}" unlock   # Clears a lock left behind if a past run was cut off (only stale ones).
+    # If Google still has a bad moment, wait two minutes and try once more. What already
+    # got uploaded the first time isn't sent again.
+    if ! restic "${RESTIC_OPTS[@]}" backup --host jevans-server --tag nightly config extras; then
+      say "Google Drive had a problem, trying again in 2 minutes"
+      sleep 120
+      restic "${RESTIC_OPTS[@]}" unlock
+      restic "${RESTIC_OPTS[@]}" backup --host jevans-server --tag nightly config extras
+    fi
 
     # Keep 14 nightly copies, then one a week for 8 weeks, then one a month for a year.
-    restic forget --host jevans-server --tag nightly --keep-daily 14 --keep-weekly 8 --keep-monthly 12
+    restic "${RESTIC_OPTS[@]}" forget --host jevans-server --tag nightly --keep-daily 14 --keep-weekly 8 --keep-monthly 12
     # Actually freeing the space takes more work, so only on Sundays.
     if [ "$(date +%u)" = 7 ]; then
       say "Sunday tidy-up: removing data no copy needs any more"
-      restic prune
+      restic "${RESTIC_OPTS[@]}" prune
     fi
 
-    say "Done: $(restic snapshots --host jevans-server --tag nightly --compact 2>/dev/null | grep -c '^[0-9a-f]\{8\} ') copies stored off the server"
+    say "Done: $(restic "${RESTIC_OPTS[@]}" snapshots --host jevans-server --tag nightly --compact 2>/dev/null | grep -c '^[0-9a-f]\{8\} ') copies stored off the server"
     if [ -n "$PUSH_URL" ]; then
       curl -fsS -m 10 --retry 3 --retry-delay 20 --retry-all-errors -o /dev/null "$PUSH_URL" || \
         say "WARNING: couldn't reach Uptime Kuma"

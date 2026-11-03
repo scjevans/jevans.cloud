@@ -2114,18 +2114,18 @@ rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ"
 ```
 
 (The jumble at the end just means "only the files you make yourself".) Your browser opens: pick your
-Google account and click **Allow**. Back in PowerShell it prints a long line starting `{"access_token"`
-between `Paste the following into your remote machine --->` and `<---End paste`. Copy that whole line,
-from `{` to `}`.
+Google account and click **Allow**. Back in PowerShell it prints a long line between
+`Paste the following into your remote machine --->` and `<---End paste`. Depending on rclone's version it
+starts `eyJ` or `{"access_token"`; either is fine. Copy that whole line.
 
 In the window connected to the server, run this, paste the line when it asks, and press Enter:
 
 ```sh
-read -rp "Token: " t && sudo rclone config create gdrive drive scope=drive.file use_trash=false token="$t" --non-interactive >/dev/null && sudo rclone lsd gdrive: && echo "Google Drive connected"
+sudo ~/jevans.cloud/server/scripts/offsite-backup.sh connect-drive
 ```
 
-It should say `Google Drive connected`. (`use_trash=false` means trimmed old copies are really deleted,
-so they don't sit in Drive's bin using up your space.) You can uninstall rclone from the laptop now if
+It should say `Google Drive connected`. (It sets `use_trash=false`, so trimmed old copies are really
+deleted instead of sitting in Drive's bin using up your space.) You can uninstall rclone from the laptop now if
 you like; the server keeps its own key.
 
 **c. Make the password.** This makes a long random one, saves it in `.env`, and shows it once:
