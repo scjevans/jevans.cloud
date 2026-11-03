@@ -26,6 +26,11 @@ PUSH_URL="$(env_value OFFSITE_PUSH_URL)"
 export RESTIC_REPOSITORY="$(env_value OFFSITE_REPOSITORY)"
 export RESTIC_PASSWORD="$(env_value OFFSITE_PASSWORD)"
 export RESTIC_CACHE_DIR=/var/cache/restic
+# Google Drive answers "500 Internal Server Error" when asked for too much at once, so rclone
+# (which restic talks to Drive through) takes it gently: a few requests a second, and it
+# retries each failed request up to 20 times before giving up.
+export RCLONE_TPSLIMIT=4 RCLONE_LOW_LEVEL_RETRIES=20 RCLONE_DRIVE_PACER_MIN_SLEEP=200ms
+RESTIC_OPTS=(-o rclone.connections=2)
 
 say() { echo "$(date '+%F %T') offsite: $*"; }
 fail() { say "FAILED: $*"; exit 1; }
@@ -61,21 +66,21 @@ esac
 
 case "${1:-backup}" in
   init)
-    restic init
+    restic "${RESTIC_OPTS[@]}" init
     say "Encrypted store ready. Keep OFFSITE_PASSWORD somewhere off the server: without it the copy can't be opened."
     ;;
 
   list)
-    restic snapshots
+    restic "${RESTIC_OPTS[@]}" snapshots
     ;;
 
   check)
-    restic check --read-data-subset=5%
+    restic "${RESTIC_OPTS[@]}" check --read-data-subset=5%
     ;;
 
   restore)
     target=/data/backups/offsite-restore
-    restic restore latest --target "$target"
+    restic "${RESTIC_OPTS[@]}" restore latest --target "$target"
     chmod 700 "$target"
     say "Downloaded to $target (config/ is every app's folder, extras/server.env is your .env)"
     ;;
@@ -86,18 +91,25 @@ case "${1:-backup}" in
     # The .staging folder is last night's backup unpacked. Backing that up (not the .tar.gz)
     # is what lets restic skip everything that hasn't changed.
     cd "$BACKUP_DIR/.staging"
-    restic unlock   # Clears a lock left behind if a past run was cut off (only stale ones).
-    restic backup --host jevans-server --tag nightly config extras
+    restic "${RESTIC_OPTS[@]}" unlock   # Clears a lock left behind if a past run was cut off (only stale ones).
+    # If Google still has a bad moment, wait two minutes and try once more. What already
+    # got uploaded the first time isn't sent again.
+    if ! restic "${RESTIC_OPTS[@]}" backup --host jevans-server --tag nightly config extras; then
+      say "Google Drive had a problem, trying again in 2 minutes"
+      sleep 120
+      restic "${RESTIC_OPTS[@]}" unlock
+      restic "${RESTIC_OPTS[@]}" backup --host jevans-server --tag nightly config extras
+    fi
 
     # Keep 14 nightly copies, then one a week for 8 weeks, then one a month for a year.
-    restic forget --host jevans-server --tag nightly --keep-daily 14 --keep-weekly 8 --keep-monthly 12
+    restic "${RESTIC_OPTS[@]}" forget --host jevans-server --tag nightly --keep-daily 14 --keep-weekly 8 --keep-monthly 12
     # Actually freeing the space takes more work, so only on Sundays.
     if [ "$(date +%u)" = 7 ]; then
       say "Sunday tidy-up: removing data no copy needs any more"
-      restic prune
+      restic "${RESTIC_OPTS[@]}" prune
     fi
 
-    say "Done: $(restic snapshots --host jevans-server --tag nightly --compact 2>/dev/null | grep -c '^[0-9a-f]\{8\} ') copies stored off the server"
+    say "Done: $(restic "${RESTIC_OPTS[@]}" snapshots --host jevans-server --tag nightly --compact 2>/dev/null | grep -c '^[0-9a-f]\{8\} ') copies stored off the server"
     if [ -n "$PUSH_URL" ]; then
       curl -fsS -m 10 --retry 3 --retry-delay 20 --retry-all-errors -o /dev/null "$PUSH_URL" || \
         say "WARNING: couldn't reach Uptime Kuma"
