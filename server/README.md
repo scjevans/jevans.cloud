@@ -2067,9 +2067,129 @@ as `extras/server.env`; ask Claude to help if you ever need that one back.
 **Settings, if you want them** (in `.env`, all optional): `BACKUP_KEEP_DAYS=30` keeps 30 nights instead
 of 14. `BACKUP_DIR` changes where they go.
 
-**Next step, later:** these backups live in the same box as the system drive, so they survive the
-system drive dying but not the whole server being lost, stolen or flooded. An encrypted copy somewhere
-else (another computer, or cloud storage) covers that. Ask Claude when you want it.
+**Next:** these backups live in the same box as the system drive, so they survive the system drive
+dying but not the whole server being lost, stolen or flooded. Step 31 adds an encrypted copy in Google
+Drive for that.
+
+### 31. An encrypted copy in Google Drive
+
+Step 30's backups sit on the media drive, inside the same box. That's a spare key in your desk drawer:
+great if you lose your keys, no help if the house burns down, floods, or the server gets stolen. This
+step adds the safe-deposit box. Every night, right after step 30 finishes, the server also sends a copy
+to your Google Drive.
+
+It's locked before it leaves the house. The tool doing it, **restic**, scrambles everything with a
+password only you have, so Google (or anyone who ever got into your Google account) sees only meaningless
+files. It also only sends what changed since last night, so after the first upload each night is a few
+megabytes. It keeps 14 nightly copies, then one a week for 8 weeks, then one a month for a year.
+
+Google Drive is reached through **rclone**, and it's given the smallest access Google offers: it can only
+see the files it made itself, not the rest of your Drive.
+
+**a. Get the new files and the two tools.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+```sh
+sudo apt install -y restic rclone
+```
+
+**b. Let the server into your Google Drive.** Google wants you to click "Allow" in a web browser, and
+the server has none, so this part uses your Windows laptop. It's easiest to do steps b to f from the
+laptop too: open **PowerShell** and connect to the server with `ssh mediabox@192.168.1.95`, so you can
+copy and paste between the two.
+
+On the laptop, open a second PowerShell window and install rclone there:
+
+```powershell
+winget install Rclone.Rclone
+```
+
+Close that window, open a new one (so it finds rclone), and run:
+
+```powershell
+rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ"
+```
+
+(The jumble at the end just means "only the files you make yourself".) Your browser opens: pick your
+Google account and click **Allow**. Back in PowerShell it prints a long line starting `{"access_token"`
+between `Paste the following into your remote machine --->` and `<---End paste`. Copy that whole line,
+from `{` to `}`.
+
+In the window connected to the server, run this, paste the line when it asks, and press Enter:
+
+```sh
+read -rp "Token: " t && sudo rclone config create gdrive drive scope=drive.file use_trash=false token="$t" --non-interactive >/dev/null && sudo rclone lsd gdrive: && echo "Google Drive connected"
+```
+
+It should say `Google Drive connected`. (`use_trash=false` means trimmed old copies are really deleted,
+so they don't sit in Drive's bin using up your space.) You can uninstall rclone from the laptop now if
+you like; the server keeps its own key.
+
+**c. Make the password.** This makes a long random one, saves it in `.env`, and shows it once:
+
+```sh
+cd ~/jevans.cloud/server && p=$(openssl rand -hex 24) && echo "OFFSITE_PASSWORD='$p'" >> .env && echo "$p"
+```
+
+**Save it in two places that aren't the server**, because without it the copy in Drive is just noise,
+for you as much as anyone. Vaultwarden alone isn't enough: Vaultwarden lives on this server. Good pairs:
+Vaultwarden *and* your iPhone's **Passwords** app (it syncs to iCloud), or Vaultwarden *and* a piece of
+paper somewhere other than next to the server.
+
+**d. Tell it where in Drive to put things.**
+
+```sh
+cd ~/jevans.cloud/server && echo "OFFSITE_REPOSITORY=rclone:gdrive:jevans-server-backup" >> .env
+```
+
+**e. An alarm for a missed night.** In Uptime Kuma: **Add New Monitor**, type **Push**, name
+`Off-server backup`, **Heartbeat Interval** `90000`. Copy the **Push URL**, **Save**, then run this, paste
+it, and press Enter:
+
+```sh
+cd ~/jevans.cloud/server && read -p "Push URL: " u && echo "OFFSITE_PUSH_URL='$u'" >> .env
+```
+
+**f. Make the locked box and send the first copy.** First the box (once only):
+
+```sh
+sudo ~/jevans.cloud/server/scripts/offsite-backup.sh init
+```
+
+Then the first upload. It sends the whole backup, so give it a few minutes:
+
+```sh
+sudo ~/jevans.cloud/server/scripts/offsite-backup.sh
+```
+
+It ends with `offsite: Done: 1 copies stored off the server`, and the `Off-server backup` monitor turns
+green. In Google Drive you'll see a `jevans-server-backup` folder full of oddly named files: that's the
+scrambled copy, working as intended. Don't move or rename anything in it.
+
+There's no new cron line: step 30's 4:15 AM backup runs this by itself when it finishes. Both get logged
+to `/var/log/config-backup.log`.
+
+**g. Now and then, prove it can be read back.** Once a month or so (or ask Claude to remind you), this
+downloads a random slice of the Drive copy and checks it unlocks and isn't damaged:
+
+```sh
+sudo ~/jevans.cloud/server/scripts/offsite-backup.sh check
+```
+
+It should end with `no errors were found`. To see every copy it keeps:
+
+```sh
+sudo ~/jevans.cloud/server/scripts/offsite-backup.sh list
+```
+
+**If the server is ever lost:** set up the new one (steps 1 to 4), then steps a, b, c and d above, but
+in step c put your *saved* password into `.env` instead of making a new one. Then
+`sudo ~/jevans.cloud/server/scripts/offsite-backup.sh restore` downloads the newest copy to
+`/data/backups/offsite-restore`: `config` is every app's folder and `extras/server.env` is your old
+`.env`. Ask Claude to walk you through putting them in place.
 
 ## Everyday commands
 
@@ -2139,6 +2259,11 @@ docker compose down            # stop everything (your settings and files stay)
   drive dropped off (see the "Media drive plugged in" monitor). `less than 5 GB free` means the media
   drive is nearly full. No log at all means the cron line from step 30d is missing: `sudo crontab -l`.
   If an app stayed stopped after a failed backup, `docker compose up -d` starts everything.
+- **"Off-server backup" is red in Uptime Kuma:** `sudo grep offsite /var/log/config-backup.log | tail`
+  says why. `invalid_grant` or `token expired` means Google forgot the server's access (a changed Google
+  password does that): redo step 31b. `wrong password or no key found` means `OFFSITE_PASSWORD` in `.env`
+  isn't the one the box was made with. `repository does not exist` (or `Is there a repository at the following
+  location?`) means step 31f's `init` never ran. If only this one is red and "Nightly backup" is green, your local backups are fine.
 - **Sonarr/Radarr copy files instead of hardlinking:** downloads and library must be on the same drive,
   under the same `DATA_DIR`.
 - **Permission errors:** `PUID`/`PGID` in `.env` must match the owner of `/data` (`id` shows yours).
