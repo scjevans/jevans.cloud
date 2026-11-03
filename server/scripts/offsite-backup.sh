@@ -9,6 +9,7 @@
 # each night sends a few megabytes, not the whole backup.
 #
 #   sudo offsite-backup.sh            back up now (backup-config.sh runs this every night)
+#   sudo offsite-backup.sh connect-drive   link Google Drive, once (asks for rclone authorize's output)
 #   sudo offsite-backup.sh init       make the encrypted store, once
 #   sudo offsite-backup.sh list       show the saved copies
 #   sudo offsite-backup.sh check      prove a slice of the stored data can be read back
@@ -31,6 +32,26 @@ fail() { say "FAILED: $*"; exit 1; }
 trap 'say "FAILED on line $LINENO of $0"' ERR
 
 [ "$(id -u)" = 0 ] || fail "run it with sudo"
+
+if [ "${1:-}" = connect-drive ]; then
+  command -v rclone >/dev/null || fail "rclone isn't installed: sudo apt install -y rclone"
+  read -rp "Paste what rclone authorize printed between the arrows: " t
+  # Newer rclone prints it base64-wrapped ("eyJ..."), older prints the raw {"access_token":...}.
+  tok=$(python3 -c '
+import sys, json, base64
+s = sys.argv[1].strip()
+if s.startswith("{"):
+    d = json.loads(s)
+else:
+    s = s.replace("+", "-").replace("/", "_")
+    d = json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)))
+print(d["token"] if "token" in d else json.dumps(d))' "$t") || fail "that doesn't look like rclone's output, copy it again"
+  rclone config create gdrive drive scope=drive.file use_trash=false token="$tok" --non-interactive >/dev/null
+  rclone lsd gdrive: >/dev/null || fail "Google didn't accept it: run rclone authorize on the laptop again"
+  say "Google Drive connected"
+  exit 0
+fi
+
 command -v restic >/dev/null || fail "restic isn't installed: sudo apt install -y restic"
 [ -n "$RESTIC_REPOSITORY" ] || fail "OFFSITE_REPOSITORY is blank in $ENV_FILE (README.md step 31)"
 [ -n "$RESTIC_PASSWORD" ] || fail "OFFSITE_PASSWORD is blank in $ENV_FILE (README.md step 31)"
