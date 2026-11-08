@@ -27,6 +27,7 @@ Think of it as a small restaurant:
 | **Speedtest Tracker** | 5216 | Tests your home internet speed every hour and keeps a history of the results | The scale by the back door that weighs every delivery |
 | **SyncTube** | 4200 | Watch parties: everyone sees the same YouTube video (or video link) at the same moment, with a chat (step 24) | The projectionist who starts the film for every table at once |
 | **SuggestArr** | 5000 | Looks at what you watched and asks Seerr for similar films and shows (step 28) | The regular's favourite waiter: "you liked the lasagne, try the ravioli" |
+| **Project NOMAD** | 8180 | An offline library: Wikipedia, maps, Khan Academy courses and notes that keep working with no internet (step 32) | The pantry of tins that still feeds you when the shops are shut |
 
 ### Why the tunnel matters
 
@@ -2154,6 +2155,103 @@ in step c put your *saved* password into `.env` instead of making a new one. The
 `sudo ~/jevans.cloud/server/scripts/offsite-backup.sh restore` downloads the newest copy to
 `/data/backups/offsite-restore`: `config` is every app's folder and `extras/server.env` is your old
 `.env`. Ask Claude to walk you through putting them in place.
+
+### 32. An offline library (Project NOMAD)
+
+Project NOMAD is a library-in-a-box. It downloads Wikipedia, medical guides, offline maps, Khan Academy
+courses and more onto the media drive, so they still open in a browser if the internet ever goes down.
+The building itself is small (under 1 GB of memory). The books go on `/data/nomad`, which has plenty of room.
+
+It works a bit differently from the other apps. NOMAD is a control panel that **installs its own small
+apps** (Kiwix for Wikipedia, Kolibri for courses, a maps viewer...) as extra containers when you click
+**Install** in it. Think of the panel as the librarian who builds a new shelf whenever you ask for one.
+That's why it gets the Docker socket, and why those extra apps don't show up in `docker compose ps`
+(`docker ps` shows them, with names starting `nomad_`).
+
+**Three rules for this box:**
+
+- **Don't install the AI Assistant** (Ollama). It needs a graphics card or about 32 GB of memory. On this
+  7 GB server it would push everything into swap and slow Jellyfin down for everyone.
+- **Don't install its Jellyfin or Vaultwarden** from the app catalog (Supply Depot). You already have both.
+- **It has no login.** Anyone on your Wi-Fi (or your Tailscale) can open it. That's fine at home, but never
+  put it on Caddy or the internet.
+
+At home it's at `http://192.168.1.95:8180`, and away from home through Tailscale.
+
+**a. Get the new files.**
+
+```sh
+cd ~/jevans.cloud && git pull
+```
+
+**b. Make its three passwords.** Each command adds one line to `.env`. You never type these anywhere, so
+there's no need to save them.
+
+```sh
+cd ~/jevans.cloud/server && echo "NOMAD_APP_KEY=$(openssl rand -hex 24)" >> .env
+```
+
+```sh
+cd ~/jevans.cloud/server && echo "NOMAD_DB_PASSWORD=$(openssl rand -hex 24)" >> .env
+```
+
+```sh
+cd ~/jevans.cloud/server && echo "NOMAD_DB_ROOT_PASSWORD=$(openssl rand -hex 24)" >> .env
+```
+
+**c. Start it.**
+
+```sh
+cd ~/jevans.cloud/server && docker compose up -d nomad-admin nomad-disk-collector && docker compose restart homepage
+```
+
+```sh
+docker compose ps nomad-admin nomad-mysql nomad-redis
+```
+
+All three should say `Up`, and `nomad-admin` should say `(healthy)` after about a minute. The first start
+takes longer while its database sets itself up. If it doesn't get there, this shows why:
+
+```sh
+docker compose logs --tail 50 nomad-admin
+```
+
+**d. Run the setup wizard.** Open `http://192.168.1.95:8180`.
+
+1. When it asks about the **AI Assistant**, skip it.
+2. Pick content **small to start**. For Wikipedia, **Popular Articles** (about 2 GB) or **Complete
+   Wikipedia (Compact)** (about 13 GB) are good first picks. **Complete Wikipedia (Full)** is about
+   124 GB. That fits, but your drive is still filling with films. Add a medical reference and maps for
+   your state only.
+3. Let it install **Kiwix** (the Information Library), and **Maps** if you picked maps. Add **Kolibri**
+   (courses) or **Notes** later if you want them.
+
+Big downloads run in the background, and you can watch them on its page. They come over your normal
+internet, not the VPN. That's fine, because it's public, legal content.
+
+**e. Check what it's using.** Beszel (step 16) shows each NOMAD app's memory next to the rest. The panel
+and its database together should sit under 1 GB. Kiwix adds a little, and Kolibri a few hundred MB.
+
+**Where everything lives:**
+
+- Downloads and the data of the apps it installs: `/data/nomad`. This isn't in the nightly backup (step 30),
+  because it can all be downloaded again. If you start keeping your own notes in **Notes**, ask Claude to add them.
+- NOMAD's own database (what's installed, your settings): `/opt/media/config/nomad`, which is in the nightly backup.
+
+**Updating:** it's pinned to one version, so `docker compose pull` won't change it, and its own **Update**
+button won't work here (that button needs a helper this setup leaves out on purpose). Ask Claude to check for a
+newer version: it's the `image:` line under `nomad-admin` in `docker-compose.yml`. The small apps it
+installs update from inside its page.
+
+**If you want it gone:** first remove the apps it installed from its page (each one has an uninstall
+button), then:
+
+```sh
+cd ~/jevans.cloud/server && docker compose rm -sf nomad-admin nomad-mysql nomad-redis nomad-disk-collector
+```
+
+Then delete its block from `docker-compose.yml` and the `NOMAD_` lines from `.env`. To free the space
+too, delete `/data/nomad` and `/opt/media/config/nomad`.
 
 ## Everyday commands
 
