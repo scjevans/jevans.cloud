@@ -33,6 +33,12 @@
         description: Suggests films and shows like the ones you watched
         server: docker
         container: suggestarr
+    - Project NOMAD:
+        icon: mdi-bookshelf
+        href: http://{{HOMEPAGE_VAR_SERVER_IP}}:8180
+        description: Offline library (Wikipedia, maps, courses)
+        server: docker
+        container: nomad_admin
 
 - Find:
     - Sonarr:
